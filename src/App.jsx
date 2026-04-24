@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { BrowserProvider } from 'ethers';
 import { MOCK_TOKENS } from './data/tokens';
 import { TokenRow } from './components/TokenRow';
 import { SkeletonRow } from './components/SkeletonRow';
@@ -6,11 +7,12 @@ import { EmptyState } from './components/EmptyState';
 import { TxBanner } from './components/TxBanner';
 import { KeplrModal } from './components/KeplrModal';
 import { Spinner } from './components/Spinner';
-import { WalletIcon, ChevronDown, RefreshIcon } from './components/Icons';
+import { WalletIcon, ChevronDown, RefreshIcon, MetaMaskIcon } from './components/Icons';
 
 function App() {
   const [walletState, setWalletState] = useState('disconnected');
   const [address, setAddress] = useState('');
+  const [dropdownOpen, setDropdownOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [tokens, setTokens] = useState([]);
   const [claimStates, setClaimStates] = useState({});
@@ -34,15 +36,81 @@ function App() {
     return () => window.removeEventListener('message', handler);
   }, []);
 
+  useEffect(() => {
+    if (!window.ethereum) return;
+
+    window.ethereum.request({ method: 'eth_accounts' }).then(accounts => {
+      if (accounts.length > 0) {
+        setAddress(accounts[0]);
+        setWalletState('connected');
+        setLoading(true);
+        setTokens([]);
+        setClaimStates({});
+        setClaimAllState('idle');
+        setTimeout(() => {
+          setTokens(MOCK_TOKENS);
+          setLoading(false);
+        }, 1800);
+      }
+    });
+
+    const handleAccountsChanged = (accounts) => {
+      if (accounts.length === 0) {
+        setWalletState('disconnected');
+        setAddress('');
+        setTokens([]);
+        setClaimStates({});
+        setClaimAllState('idle');
+        setDropdownOpen(false);
+      } else {
+        setAddress(accounts[0]);
+        setLoading(true);
+        setTokens([]);
+        setClaimStates({});
+        setClaimAllState('idle');
+        setTimeout(() => {
+          setTokens(MOCK_TOKENS);
+          setLoading(false);
+        }, 1800);
+      }
+    };
+
+    const handleChainChanged = () => window.location.reload();
+
+    window.ethereum.on('accountsChanged', handleAccountsChanged);
+    window.ethereum.on('chainChanged', handleChainChanged);
+
+    return () => {
+      window.ethereum.removeListener('accountsChanged', handleAccountsChanged);
+      window.ethereum.removeListener('chainChanged', handleChainChanged);
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const connectWallet = async () => {
+    if (!window.ethereum) {
+      setWalletState('no_metamask');
+      return;
+    }
     setWalletState('connecting');
-    await new Promise(r => setTimeout(r, 1200));
-    const mockAddr = '0x' + Array.from({ length: 40 }, () =>
-      '0123456789abcdef'[Math.floor(Math.random() * 16)]
-    ).join('');
-    setAddress(mockAddr);
-    setWalletState('connected');
-    fetchBalances();
+    try {
+      const provider = new BrowserProvider(window.ethereum);
+      const accounts = await provider.send('eth_requestAccounts', []);
+      setAddress(accounts[0]);
+      setWalletState('connected');
+      fetchBalances();
+    } catch (err) {
+      setWalletState('disconnected');
+      if (err.code !== 4001) showBanner('Connection failed. Try again.', 'pending');
+    }
+  };
+
+  const disconnectWallet = () => {
+    setWalletState('disconnected');
+    setAddress('');
+    setTokens([]);
+    setClaimStates({});
+    setClaimAllState('idle');
+    setDropdownOpen(false);
   };
 
   const fetchBalances = async () => {
@@ -152,7 +220,7 @@ function App() {
             </button>
           )}
 
-          {walletState === 'disconnected' && (
+          {(walletState === 'disconnected' || walletState === 'no_metamask') && (
             <button
               onClick={connectWallet}
               style={{
@@ -170,13 +238,13 @@ function App() {
                 fontWeight: 600,
                 cursor: 'pointer',
                 transition: 'all 0.18s',
-                animation: 'pulseGlow 2.5s ease infinite',
+                animation: walletState === 'disconnected' ? 'pulseGlow 2.5s ease infinite' : 'none',
               }}
               onMouseEnter={e => { e.currentTarget.style.background = 'oklch(0.68 0.19 46 / 0.22)'; e.currentTarget.style.animation = 'none'; }}
-              onMouseLeave={e => { e.currentTarget.style.background = 'var(--orange-dim)'; e.currentTarget.style.animation = 'pulseGlow 2.5s ease infinite'; }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'var(--orange-dim)'; e.currentTarget.style.animation = walletState === 'disconnected' ? 'pulseGlow 2.5s ease infinite' : 'none'; }}
             >
               <WalletIcon size={15} />
-              Connect Wallet
+              {walletState === 'no_metamask' ? 'MetaMask not found' : 'Connect Wallet'}
             </button>
           )}
 
@@ -202,31 +270,89 @@ function App() {
           )}
 
           {walletState === 'connected' && (
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              height: 38,
-              padding: '0 14px',
-              borderRadius: 9,
-              background: 'var(--bg-3)',
-              border: '1px solid var(--border-hi)',
-              fontSize: 13,
-              fontWeight: 500,
-              fontFamily: 'Space Mono, monospace',
-              color: 'var(--text)',
-              cursor: 'default',
-              letterSpacing: '-0.2px',
-            }}>
-              <div style={{
-                width: 8,
-                height: 8,
-                borderRadius: '50%',
-                background: 'var(--green)',
-                boxShadow: '0 0 8px var(--green)',
-              }} />
-              {truncate(address)}
-              <ChevronDown size={13} />
+            <div style={{ position: 'relative' }}>
+              <button
+                onClick={() => setDropdownOpen(o => !o)}
+                onBlur={() => setTimeout(() => setDropdownOpen(false), 150)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  height: 38,
+                  padding: '0 14px',
+                  borderRadius: 9,
+                  background: 'var(--bg-3)',
+                  border: '1px solid var(--border-hi)',
+                  fontSize: 13,
+                  fontWeight: 500,
+                  fontFamily: 'Space Mono, monospace',
+                  color: 'var(--text)',
+                  cursor: 'pointer',
+                  letterSpacing: '-0.2px',
+                }}
+              >
+                <div style={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: '50%',
+                  background: 'var(--green)',
+                  boxShadow: '0 0 8px var(--green)',
+                }} />
+                {truncate(address)}
+                <span style={{
+                  display: 'flex',
+                  transform: dropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+                  transition: 'transform 0.15s',
+                }}>
+                  <ChevronDown size={13} />
+                </span>
+              </button>
+
+              {dropdownOpen && (
+                <div style={{
+                  position: 'absolute',
+                  top: 'calc(100% + 6px)',
+                  right: 0,
+                  background: 'var(--bg-2)',
+                  border: '1px solid var(--border-hi)',
+                  borderRadius: 10,
+                  overflow: 'hidden',
+                  boxShadow: '0 12px 40px oklch(0 0 0 / 0.4)',
+                  minWidth: 160,
+                  zIndex: 50,
+                  animation: 'fadeUp 0.15s ease',
+                }}>
+                  <div style={{
+                    padding: '10px 14px',
+                    fontSize: 11,
+                    color: 'var(--text-muted)',
+                    fontFamily: 'Space Mono, monospace',
+                    borderBottom: '1px solid var(--border)',
+                    letterSpacing: '-0.2px',
+                  }}>
+                    {truncate(address)}
+                  </div>
+                  <button
+                    onClick={disconnectWallet}
+                    style={{
+                      width: '100%',
+                      padding: '10px 14px',
+                      background: 'none',
+                      border: 'none',
+                      color: 'oklch(0.65 0.2 25)',
+                      fontSize: 13,
+                      fontWeight: 600,
+                      fontFamily: 'Space Grotesk, sans-serif',
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.background = 'oklch(0.60 0.18 25 / 0.1)'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                  >
+                    Disconnect
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -300,7 +426,49 @@ function App() {
             )}
           </div>
 
-          {walletState !== 'connected' && !loading && (
+          {walletState === 'no_metamask' && !loading && (
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              padding: '56px 24px',
+              animation: 'fadeUp 0.4s ease both',
+            }}>
+              <div style={{ marginBottom: 18 }}>
+                <MetaMaskIcon size={52} />
+              </div>
+              <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 8 }}>MetaMask not detected</div>
+              <div style={{ fontSize: 13, color: 'var(--text-muted)', textAlign: 'center', maxWidth: 280, lineHeight: 1.65, marginBottom: 24 }}>
+                Install the MetaMask browser extension to connect your wallet and claim your assets.
+              </div>
+              <a
+                href="https://metamask.io/download/"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  height: 42,
+                  padding: '0 22px',
+                  borderRadius: 9,
+                  border: '1.5px solid var(--orange)',
+                  background: 'var(--orange-dim)',
+                  color: 'var(--orange)',
+                  fontFamily: 'Space Grotesk, sans-serif',
+                  fontSize: 14,
+                  fontWeight: 600,
+                  textDecoration: 'none',
+                  cursor: 'pointer',
+                }}
+              >
+                <MetaMaskIcon size={16} />
+                Install MetaMask
+              </a>
+            </div>
+          )}
+
+          {walletState !== 'connected' && walletState !== 'no_metamask' && !loading && (
             <div style={{
               display: 'flex',
               flexDirection: 'column',
@@ -523,7 +691,7 @@ function App() {
                     key={val}
                     onClick={() => {
                       if (val === 'connected' && walletState !== 'connected') connectWallet();
-                      if (val === 'disconnected') { setWalletState('disconnected'); setTokens([]); setAddress(''); }
+                      if (val === 'disconnected') disconnectWallet();
                     }}
                     style={{
                       flex: 1, height: 32, borderRadius: 7, fontSize: 12, fontWeight: 500,
