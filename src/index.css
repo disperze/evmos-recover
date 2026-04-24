@@ -1,0 +1,103 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:         oklch(0.11 0.008 260);
+  --bg-2:       oklch(0.14 0.008 255);
+  --bg-3:       oklch(0.17 0.010 255);
+  --border:     oklch(0.22 0.010 255);
+  --border-hi:  oklch(0.28 0.012 255);
+  --text:       oklch(0.92 0.008 90);
+  --text-muted: oklch(0.55 0.010 255);
+  --text-dim:   oklch(0.38 0.008 255);
+  --orange:     oklch(0.68 0.19 46);
+  --orange-dim: oklch(0.68 0.19 46 / 0.12);
+  --orange-glow:oklch(0.68 0.19 46 / 0.25);
+  --green:      oklch(0.68 0.16 145);
+  --green-dim:  oklch(0.68 0.16 145 / 0.12);
+  --red:        oklch(0.60 0.18 25);
+  --radius:     10px;
+  --radius-lg:  16px;
+}
+
+html, body { height: 100%; }
+
+body {
+  font-family: 'Space Grotesk', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image:
+    linear-gradient(oklch(1 0 0 / 0.015) 1px, transparent 1px),
+    linear-gradient(90deg, oklch(1 0 0 / 0.015) 1px, transparent 1px);
+  background-size: 40px 40px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+body::after {
+  content: '';
+  position: fixed;
+  top: -200px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 800px;
+  height: 500px;
+  background: radial-gradient(ellipse, oklch(0.68 0.19 46 / 0.07) 0%, transparent 70%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+#root { position: relative; z-index: 1; }
+
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-hi); border-radius: 3px; }
+
+@keyframes shimmer {
+  0% { background-position: -600px 0; }
+  100% { background-position: 600px 0; }
+}
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes pulseGlow {
+  0%, 100% { box-shadow: 0 0 0 0 var(--orange-glow); }
+  50%       { box-shadow: 0 0 0 6px transparent; }
+}
+
+@keyframes successPop {
+  0%   { transform: scale(0.8); opacity: 0; }
+  60%  { transform: scale(1.05); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes modalIn {
+  from { opacity: 0; transform: scale(0.95) translateY(8px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@keyframes overlayIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.skeleton {
+  background: linear-gradient(90deg, var(--bg-3) 25%, var(--border) 50%, var(--bg-3) 75%);
+  background-size: 600px 100%;
+  animation: shimmer 1.6s infinite linear;
+  border-radius: 6px;
+}
