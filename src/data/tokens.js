@@ -34,6 +34,7 @@ export async function fetchBalances(hexAddress) {
       name: t.name,
       coingeckoId: t.coingeckoId,
       usd: usdValue,
+      stage: t.stage,
     };
   });
 }

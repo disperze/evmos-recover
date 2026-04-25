@@ -105,37 +105,37 @@ export function KeplrModal({ claimTarget, hexAddress, onClose, onConfirmed }) {
     const tokens = isBatch ? claimTarget : [claimTarget];
     let lastTxHash = '';
 
-    for (const token of tokens) {
-      try {
-        const result = await client.execute(
-          cosmosAddress,
-          CONTRACT_ADDRESS,
-          { claim: {
-              stage: 1,
-              amount: token.amount,
-              proof: proofs[token.denom],
-              sig_info: {
-              claim_msg: claimMsgB64,
-              signature,
-              }
-            }
+    try {
+      const instructions = tokens.map(token => ({
+        contractAddress: CONTRACT_ADDRESS,
+        msg: {
+          claim: {
+            stage: token.stage,
+            amount: token.amount,
+            proof: proofs[token.denom],
+            sig_info: { claim_msg: claimMsgB64, signature },
           },
-          'auto',
-          'evmos-recover claim',
-        );
-        lastTxHash = result.transactionHash;
-      } catch (err) {
-        const errMsg = err?.message ?? '';
-        if (errMsg.includes('rejected') || errMsg.includes('Request rejected')) {
-          setClaimError('Keplr transaction rejected.');
-        } else if (errMsg.includes('already claimed')) {
-          setClaimError('This token has already been claimed.');
-        } else {
-          setClaimError(`Transaction failed: ${errMsg.slice(0, 80)}`);
-        }
-        setStep('confirm');
-        return;
+        },
+        funds: [],
+      }));
+      const result = await client.executeMultiple(
+        cosmosAddress,
+        instructions,
+        'auto',
+        'evmos-recover claim',
+      );
+      lastTxHash = result.transactionHash;
+    } catch (err) {
+      const errMsg = err?.message ?? '';
+      if (errMsg.includes('rejected') || errMsg.includes('Request rejected')) {
+        setClaimError('Keplr transaction rejected.');
+      } else if (errMsg.includes('already claimed')) {
+        setClaimError('This token has already been claimed.');
+      } else {
+        setClaimError(`Transaction failed: ${errMsg.slice(0, 80)}`);
       }
+      setStep('confirm');
+      return;
     }
 
     setTxHash(lastTxHash);
@@ -382,7 +382,6 @@ export function KeplrModal({ claimTarget, hexAddress, onClose, onConfirmed }) {
                 <TxRow label="Assets" value={label} highlight />
                 <TxRow label="Est. value" value={usdLabel} />
                 <TxRow label="Recipient" value={truncateCosmos(cosmosAddress)} mono />
-                <TxRow label="Network fee" value="~$0.02" />
               </div>
             </div>
 
