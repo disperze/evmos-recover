@@ -75,7 +75,7 @@ export function KeplrModal({ claimTarget, hexAddress, onClose, onConfirmed }) {
 
     let signature, claimMsgB64;
     try {
-      const msgStr = JSON.stringify({ address: cosmosAddress });
+      const msgStr = JSON.stringify({ address: cosmosAddress, note: "Recover EVMOS" });
       claimMsgB64 = btoa(msgStr);
       const msgHex = '0x' + Array.from(new TextEncoder().encode(msgStr)).map(b => b.toString(16).padStart(2, '0')).join('');
       const sigHex = await window.ethereum.request({
