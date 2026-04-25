@@ -2,8 +2,9 @@ import { useState } from 'react';
 import { Spinner } from './Spinner';
 import { CheckIcon, KeplrLogo } from './Icons';
 import { fetchProofs } from '../data/tokens';
+import { GasPrice } from '@cosmjs/stargate';
 import { SigningCosmWasmClient } from '@cosmjs/cosmwasm-stargate';
-import { COSMOS_CHAIN_ID, CONTRACT_ADDRESS, RPC_URL } from '../config';
+import { COSMOS_CHAIN_ID, CONTRACT_ADDRESS, RPC_URL, GAS_PRICE } from '../config';
 
 function TxRow({ label, value, highlight, mono }) {
   return (
@@ -92,7 +93,9 @@ export function KeplrModal({ claimTarget, hexAddress, onClose, onConfirmed }) {
     let client;
     try {
       const offlineSigner = window.keplr.getOfflineSigner(COSMOS_CHAIN_ID);
-      client = await SigningCosmWasmClient.connectWithSigner(RPC_URL, offlineSigner);
+      client = await SigningCosmWasmClient.connectWithSigner(RPC_URL, offlineSigner, {
+        gasPrice: GasPrice.fromString(GAS_PRICE),
+      });
     } catch {
       setClaimError('Could not connect to the Cosmos RPC. Please try again.');
       setStep('confirm');

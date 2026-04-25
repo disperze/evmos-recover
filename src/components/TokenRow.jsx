@@ -31,7 +31,7 @@ export function TokenRow({ token, claimState, onClaim, index }) {
           color: claimed ? 'var(--green)' : 'var(--text)',
           letterSpacing: '-0.3px',
         }}>
-          {claimed ? '✓ ' : ''}{token.amount}
+          {claimed ? '✓ ' : ''}{(token.amount / 1000000).toFixed(6)}
         </div>
         <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 3 }}>${token.usd}</div>
       </div>
