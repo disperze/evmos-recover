@@ -1,6 +1,4 @@
 import { useState, useEffect } from 'react';
-import { BrowserProvider } from 'ethers';
-import { MOCK_TOKENS } from './data/tokens';
 import { TokenRow } from './components/TokenRow';
 import { SkeletonRow } from './components/SkeletonRow';
 import { EmptyState } from './components/EmptyState';
@@ -18,23 +16,11 @@ function App() {
   const [claimStates, setClaimStates] = useState({});
   const [claimAllState, setClaimAllState] = useState('idle');
   const [banner, setBanner] = useState({ message: '', type: '' });
-  const [showEmpty, setShowEmpty] = useState(false);
   const [modal, setModal] = useState(null);
-  const [tweaksOpen, setTweaksOpen] = useState(false);
 
   const showBanner = (message, type = 'success') => setBanner({ message, type });
   const dismissBanner = () => setBanner({ message: '', type: '' });
   const truncate = (addr) => addr ? `${addr.slice(0, 6)}…${addr.slice(-4)}` : '';
-
-  useEffect(() => {
-    const handler = (e) => {
-      if (e.data?.type === '__activate_edit_mode') setTweaksOpen(true);
-      if (e.data?.type === '__deactivate_edit_mode') setTweaksOpen(false);
-    };
-    window.addEventListener('message', handler);
-    window.parent.postMessage({ type: '__edit_mode_available' }, '*');
-    return () => window.removeEventListener('message', handler);
-  }, []);
 
   useEffect(() => {
     if (!window.ethereum) return;
@@ -43,14 +29,7 @@ function App() {
       if (accounts.length > 0) {
         setAddress(accounts[0]);
         setWalletState('connected');
-        setLoading(true);
-        setTokens([]);
-        setClaimStates({});
-        setClaimAllState('idle');
-        setTimeout(() => {
-          setTokens(MOCK_TOKENS);
-          setLoading(false);
-        }, 1800);
+        fetchBalances(accounts[0]);
       }
     });
 
@@ -64,14 +43,7 @@ function App() {
         setDropdownOpen(false);
       } else {
         setAddress(accounts[0]);
-        setLoading(true);
-        setTokens([]);
-        setClaimStates({});
-        setClaimAllState('idle');
-        setTimeout(() => {
-          setTokens(MOCK_TOKENS);
-          setLoading(false);
-        }, 1800);
+        fetchBalances(accounts[0]);
       }
     };
 
@@ -93,11 +65,10 @@ function App() {
     }
     setWalletState('connecting');
     try {
-      const provider = new BrowserProvider(window.ethereum);
-      const accounts = await provider.send('eth_requestAccounts', []);
+      const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
       setAddress(accounts[0]);
       setWalletState('connected');
-      fetchBalances();
+      fetchBalances(accounts[0]);
     } catch (err) {
       setWalletState('disconnected');
       if (err.code !== 4001) showBanner('Connection failed. Try again.', 'pending');
@@ -113,22 +84,16 @@ function App() {
     setDropdownOpen(false);
   };
 
-  const fetchBalances = async () => {
+  const fetchBalances = async (hexAddress) => {
     setLoading(true);
     setTokens([]);
     setClaimStates({});
     setClaimAllState('idle');
-    await new Promise(r => setTimeout(r, 1800));
-    setTokens(showEmpty ? [] : MOCK_TOKENS);
     setLoading(false);
   };
 
   const claimToken = async (id) => {
     setClaimStates(s => ({ ...s, [id]: 'pending' }));
-    showBanner('Transaction submitted…', 'pending');
-    await new Promise(r => setTimeout(r, 1600 + Math.random() * 800));
-    setClaimStates(s => ({ ...s, [id]: 'success' }));
-    showBanner('Claimed successfully!', 'success');
   };
 
   const openClaimModal = (token) => setModal({ target: token });
@@ -198,7 +163,7 @@ function App() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           {walletState === 'connected' && (
             <button
-              onClick={fetchBalances}
+              onClick={() => fetchBalances(address)}
               title="Refresh balances"
               style={{
                 width: 36,
@@ -631,99 +596,6 @@ function App() {
           onClose={() => setModal(null)}
           onConfirmed={() => { handleModalConfirmed(modal.target); setModal(null); }}
         />
-      )}
-
-      {tweaksOpen && (
-        <div style={{
-          position: 'fixed',
-          bottom: 24,
-          right: 24,
-          background: 'var(--bg-2)',
-          border: '1px solid var(--border-hi)',
-          borderRadius: 16,
-          padding: 20,
-          width: 260,
-          boxShadow: '0 16px 48px oklch(0 0 0 / 0.5)',
-          zIndex: 200,
-          animation: 'fadeUp 0.25s ease',
-          fontFamily: 'Space Grotesk, sans-serif',
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-            <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>Tweaks</span>
-            <button
-              onClick={() => { setTweaksOpen(false); window.parent.postMessage({ type: '__edit_mode_dismissed' }, '*'); }}
-              style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 18, lineHeight: 1 }}
-            >×</button>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            <label style={{ fontSize: 12, color: 'var(--text-muted)', display: 'flex', flexDirection: 'column', gap: 6 }}>
-              Simulate empty wallet
-              <div style={{ display: 'flex', gap: 8 }}>
-                {[false, true].map(val => (
-                  <button
-                    key={String(val)}
-                    onClick={() => {
-                      setShowEmpty(val);
-                      if (walletState === 'connected') {
-                        setTokens(val ? [] : MOCK_TOKENS);
-                        setClaimStates({});
-                        setClaimAllState('idle');
-                      }
-                    }}
-                    style={{
-                      flex: 1, height: 32, borderRadius: 7, fontSize: 12, fontWeight: 500,
-                      border: `1px solid ${showEmpty === val ? 'var(--orange)' : 'var(--border)'}`,
-                      background: showEmpty === val ? 'var(--orange-dim)' : 'var(--bg-3)',
-                      color: showEmpty === val ? 'var(--orange)' : 'var(--text-muted)',
-                      cursor: 'pointer', fontFamily: 'Space Grotesk, sans-serif',
-                    }}
-                  >
-                    {val ? 'Empty' : 'With assets'}
-                  </button>
-                ))}
-              </div>
-            </label>
-            <label style={{ fontSize: 12, color: 'var(--text-muted)', display: 'flex', flexDirection: 'column', gap: 6 }}>
-              Wallet state
-              <div style={{ display: 'flex', gap: 8 }}>
-                {['disconnected', 'connected'].map(val => (
-                  <button
-                    key={val}
-                    onClick={() => {
-                      if (val === 'connected' && walletState !== 'connected') connectWallet();
-                      if (val === 'disconnected') disconnectWallet();
-                    }}
-                    style={{
-                      flex: 1, height: 32, borderRadius: 7, fontSize: 12, fontWeight: 500,
-                      border: `1px solid ${walletState === val ? 'var(--orange)' : 'var(--border)'}`,
-                      background: walletState === val ? 'var(--orange-dim)' : 'var(--bg-3)',
-                      color: walletState === val ? 'var(--orange)' : 'var(--text-muted)',
-                      cursor: 'pointer', fontFamily: 'Space Grotesk, sans-serif', textTransform: 'capitalize',
-                    }}
-                  >
-                    {val === 'disconnected' ? 'Off' : 'On'}
-                  </button>
-                ))}
-              </div>
-            </label>
-            <label style={{ fontSize: 12, color: 'var(--text-muted)', display: 'flex', flexDirection: 'column', gap: 6 }}>
-              Simulate loading
-              <button
-                onClick={fetchBalances}
-                disabled={walletState !== 'connected'}
-                style={{
-                  height: 32, borderRadius: 7, fontSize: 12, fontWeight: 500,
-                  border: '1px solid var(--border)', background: 'var(--bg-3)',
-                  color: walletState === 'connected' ? 'var(--text)' : 'var(--text-dim)',
-                  cursor: walletState === 'connected' ? 'pointer' : 'not-allowed',
-                  fontFamily: 'Space Grotesk, sans-serif',
-                }}
-              >
-                Re-fetch balances
-              </button>
-            </label>
-          </div>
-        </div>
       )}
     </div>
   );

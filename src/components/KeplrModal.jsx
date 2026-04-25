@@ -33,12 +33,6 @@ export function KeplrModal({ claimTarget, onClose, onConfirmed }) {
 
   const connectKeplr = async () => {
     setStep('connecting');
-    await new Promise(r => setTimeout(r, 1400));
-    const mock = 'cosmos1' + Array.from({ length: 38 }, () =>
-      'abcdefghijklmnopqrstuvwxyz0123456789'[Math.floor(Math.random() * 36)]
-    ).join('');
-    setCosmosAddress(mock);
-    setStep('confirm');
   };
 
   const confirmClaim = async () => {
