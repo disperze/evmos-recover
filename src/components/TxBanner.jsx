@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { CheckIcon } from './Icons';
 import { Spinner } from './Spinner';
 
-export function TxBanner({ message, type, onDismiss }) {
+export function TxBanner({ message, type, txHash, onDismiss }) {
   useEffect(() => {
     if (!message) return;
     const t = setTimeout(onDismiss, 4000);
@@ -36,7 +36,24 @@ export function TxBanner({ message, type, onDismiss }) {
       {isSuccess
         ? <CheckIcon size={14} color="var(--green)" />
         : <Spinner size={14} color="var(--orange)" />}
-      {message}
+      <span>{message}</span>
+      {isSuccess && txHash && (
+        <a
+          href={`https://www.mintscan.io/cosmos/tx/${txHash}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            color: 'inherit',
+            opacity: 0.75,
+            textDecoration: 'underline',
+            fontSize: 12,
+            fontFamily: 'Space Mono, monospace',
+            marginLeft: 4,
+          }}
+        >
+          View ↗
+        </a>
+      )}
     </div>
   );
 }

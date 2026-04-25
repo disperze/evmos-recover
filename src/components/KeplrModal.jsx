@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { Spinner } from './Spinner';
 import { CheckIcon, KeplrLogo } from './Icons';
 import { fetchProofs } from '../data/tokens';
+import { SigningCosmWasmClient } from '@cosmjs/cosmwasm-stargate';
+import { COSMOS_CHAIN_ID, CONTRACT_ADDRESS, RPC_URL } from '../config';
 
 function TxRow({ label, value, highlight, mono }) {
   return (
@@ -23,7 +25,9 @@ export function KeplrModal({ claimTarget, hexAddress, onClose, onConfirmed }) {
   const [step, setStep] = useState('connect');
   const [cosmosAddress, setCosmosAddress] = useState('');
   const [proofs, setProofs] = useState({});
-  const [proofError, setProofError] = useState(null);
+  const [keplrError, setKeplrError] = useState(null);
+  const [claimError, setClaimError] = useState(null);
+  const [txHash, setTxHash] = useState('');
 
   const isBatch = Array.isArray(claimTarget);
   const label = isBatch
@@ -36,22 +40,104 @@ export function KeplrModal({ claimTarget, hexAddress, onClose, onConfirmed }) {
 
   const connectKeplr = async () => {
     setStep('connecting');
-    setProofError(null);
+    setKeplrError(null);
+
+    if (!window.keplr) {
+      setKeplrError('Keplr is not installed. Install the Keplr browser extension and try again.');
+      setStep('connect');
+      return;
+    }
+
     try {
+      await window.keplr.enable(COSMOS_CHAIN_ID);
+      const key = await window.keplr.getKey(COSMOS_CHAIN_ID);
+      setCosmosAddress(key.bech32Address);
+
       const tokens = isBatch ? claimTarget : [claimTarget];
       const proofMap = await fetchProofs(hexAddress, tokens);
       setProofs(proofMap);
       setStep('confirm');
-    } catch {
-      setProofError('Could not fetch Merkle proof. Please try again.');
+    } catch (err) {
+      const msg = err?.message ?? '';
+      setKeplrError(
+        msg.includes('rejected') || msg.includes('Request rejected')
+          ? 'Keplr connection rejected. Please approve the request.'
+          : 'Could not connect to Keplr or fetch Merkle proof. Please try again.'
+      );
       setStep('connect');
     }
   };
 
   const confirmClaim = async () => {
     setStep('submitting');
+    setClaimError(null);
+
+    let signature, claimMsgB64;
+    try {
+      const msgStr = JSON.stringify({ address: cosmosAddress });
+      claimMsgB64 = btoa(msgStr);
+      const msgHex = '0x' + Array.from(new TextEncoder().encode(msgStr)).map(b => b.toString(16).padStart(2, '0')).join('');
+      const sigHex = await window.ethereum.request({
+        method: 'personal_sign',
+        params: [msgHex, hexAddress],
+      });
+      const sigBytes = sigHex.slice(2).match(/.{2}/g).map(b => parseInt(b, 16));
+      signature = btoa(String.fromCharCode(...sigBytes));
+    } catch (err) {
+      setClaimError(err?.code === 4001 ? 'MetaMask signature rejected.' : 'MetaMask signing failed. Please try again.');
+      setStep('confirm');
+      return;
+    }
+
+    let client;
+    try {
+      const offlineSigner = window.keplr.getOfflineSigner(COSMOS_CHAIN_ID);
+      client = await SigningCosmWasmClient.connectWithSigner(RPC_URL, offlineSigner);
+    } catch {
+      setClaimError('Could not connect to the Cosmos RPC. Please try again.');
+      setStep('confirm');
+      return;
+    }
+
+    const tokens = isBatch ? claimTarget : [claimTarget];
+    let lastTxHash = '';
+
+    for (const token of tokens) {
+      try {
+        const result = await client.execute(
+          cosmosAddress,
+          CONTRACT_ADDRESS,
+          { claim: {
+              stage: 1,
+              amount: token.amount,
+              proof: proofs[token.denom],
+              sig_info: {
+              claim_msg: claimMsgB64,
+              signature,
+              }
+            }
+          },
+          'auto',
+          'evmos-recover claim',
+        );
+        lastTxHash = result.transactionHash;
+      } catch (err) {
+        const errMsg = err?.message ?? '';
+        if (errMsg.includes('rejected') || errMsg.includes('Request rejected')) {
+          setClaimError('Keplr transaction rejected.');
+        } else if (errMsg.includes('already claimed')) {
+          setClaimError('This token has already been claimed.');
+        } else {
+          setClaimError(`Transaction failed: ${errMsg.slice(0, 80)}`);
+        }
+        setStep('confirm');
+        return;
+      }
+    }
+
+    setTxHash(lastTxHash);
     setStep('success');
-    setTimeout(() => { onConfirmed(proofs); onClose(); }, 1200);
+    setTimeout(() => { onConfirmed(claimTarget, lastTxHash); onClose(); }, 1800);
   };
 
   const truncateCosmos = a => a ? `${a.slice(0, 12)}…${a.slice(-6)}` : '';
@@ -213,9 +299,9 @@ export function KeplrModal({ claimTarget, hexAddress, onClose, onConfirmed }) {
               {step === 'connecting' ? 'Fetching proof…' : 'Connect with Keplr'}
             </button>
 
-            {proofError && (
+            {keplrError && (
               <div style={{ marginTop: 12, fontSize: 12, color: 'oklch(0.65 0.2 25)', textAlign: 'center' }}>
-                {proofError}
+                {keplrError}
               </div>
             )}
           </div>
@@ -339,6 +425,12 @@ export function KeplrModal({ claimTarget, hexAddress, onClose, onConfirmed }) {
               {step === 'submitting' ? <Spinner size={15} color="white" /> : null}
               {step === 'submitting' ? 'Submitting…' : 'Confirm Claim'}
             </button>
+
+            {claimError && (
+              <div style={{ marginTop: -8, fontSize: 12, color: 'oklch(0.65 0.2 25)', textAlign: 'center' }}>
+                {claimError}
+              </div>
+            )}
           </div>
         )}
 
@@ -369,6 +461,26 @@ export function KeplrModal({ claimTarget, hexAddress, onClose, onConfirmed }) {
             <div style={{ fontSize: 13, color: 'var(--text-muted)', textAlign: 'center', lineHeight: 1.6, maxWidth: 280 }}>
               Your transaction has been broadcast. Funds will appear in your Cosmos wallet shortly.
             </div>
+            {txHash && (
+              <a
+                href={`https://www.mintscan.io/cosmos/tx/${txHash}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  marginTop: 16,
+                  fontSize: 11,
+                  fontFamily: 'Space Mono, monospace',
+                  color: 'var(--text-muted)',
+                  textDecoration: 'underline',
+                  letterSpacing: '-0.2px',
+                  wordBreak: 'break-all',
+                  textAlign: 'center',
+                  maxWidth: 320,
+                }}
+              >
+                {txHash.slice(0, 16)}…{txHash.slice(-8)} ↗
+              </a>
+            )}
           </div>
         )}
       </div>

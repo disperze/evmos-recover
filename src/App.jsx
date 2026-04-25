@@ -17,10 +17,10 @@ function App() {
   const [tokens, setTokens] = useState([]);
   const [claimStates, setClaimStates] = useState({});
   const [claimAllState, setClaimAllState] = useState('idle');
-  const [banner, setBanner] = useState({ message: '', type: '' });
+  const [banner, setBanner] = useState({ message: '', type: '', txHash: '' });
   const [modal, setModal] = useState(null);
 
-  const showBanner = (message, type = 'success') => setBanner({ message, type });
+  const showBanner = (message, type = 'success', txHash = '') => setBanner({ message, type, txHash });
   const dismissBanner = () => setBanner({ message: '', type: '' });
   const truncate = (addr) => addr ? `${addr.slice(0, 6)}…${addr.slice(-4)}` : '';
 
@@ -112,9 +112,14 @@ function App() {
     setModal({ target: unclaimed });
   };
 
-  const handleModalConfirmed = (target, proofs) => {
+  const handleModalConfirmed = (target, txHash) => {
     const ids = Array.isArray(target) ? target.map(t => t.id) : [target.id];
-    ids.forEach(id => claimToken(id));
+    setClaimStates(s => {
+      const next = { ...s };
+      ids.forEach(id => { next[id] = 'success'; });
+      return next;
+    });
+    showBanner('Claim submitted!', 'success', txHash);
   };
 
   const allClaimed = tokens.length > 0 && tokens.every(t => claimStates[t.id] === 'success');
@@ -632,14 +637,14 @@ function App() {
         )}
       </main>
 
-      <TxBanner message={banner.message} type={banner.type} onDismiss={dismissBanner} />
+      <TxBanner message={banner.message} type={banner.type} txHash={banner.txHash} onDismiss={dismissBanner} />
 
       {modal && (
         <KeplrModal
           claimTarget={modal.target}
           hexAddress={address}
           onClose={() => setModal(null)}
-          onConfirmed={(proofs) => { handleModalConfirmed(modal.target, proofs); setModal(null); }}
+          onConfirmed={(target, txHash) => { handleModalConfirmed(target, txHash); setModal(null); }}
         />
       )}
     </div>
