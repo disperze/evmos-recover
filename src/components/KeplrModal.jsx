@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Spinner } from './Spinner';
 import { CheckIcon, KeplrLogo } from './Icons';
+import { fetchProofs } from '../data/tokens';
 
 function TxRow({ label, value, highlight, mono }) {
   return (
@@ -18,9 +19,11 @@ function TxRow({ label, value, highlight, mono }) {
   );
 }
 
-export function KeplrModal({ claimTarget, onClose, onConfirmed }) {
+export function KeplrModal({ claimTarget, hexAddress, onClose, onConfirmed }) {
   const [step, setStep] = useState('connect');
   const [cosmosAddress, setCosmosAddress] = useState('');
+  const [proofs, setProofs] = useState({});
+  const [proofError, setProofError] = useState(null);
 
   const isBatch = Array.isArray(claimTarget);
   const label = isBatch
@@ -33,13 +36,22 @@ export function KeplrModal({ claimTarget, onClose, onConfirmed }) {
 
   const connectKeplr = async () => {
     setStep('connecting');
+    setProofError(null);
+    try {
+      const tokens = isBatch ? claimTarget : [claimTarget];
+      const proofMap = await fetchProofs(hexAddress, tokens);
+      setProofs(proofMap);
+      setStep('confirm');
+    } catch {
+      setProofError('Could not fetch Merkle proof. Please try again.');
+      setStep('connect');
+    }
   };
 
   const confirmClaim = async () => {
     setStep('submitting');
-    await new Promise(r => setTimeout(r, 1800));
     setStep('success');
-    setTimeout(() => { onConfirmed(); onClose(); }, 1200);
+    setTimeout(() => { onConfirmed(proofs); onClose(); }, 1200);
   };
 
   const truncateCosmos = a => a ? `${a.slice(0, 12)}…${a.slice(-6)}` : '';
@@ -198,8 +210,14 @@ export function KeplrModal({ claimTarget, onClose, onConfirmed }) {
               onMouseLeave={e => { if (step !== 'connecting') e.currentTarget.style.background = '#5b6ef5'; }}
             >
               {step === 'connecting' ? <Spinner size={15} color="#8b9cf4" /> : <KeplrLogo size={18} />}
-              {step === 'connecting' ? 'Awaiting Keplr…' : 'Connect with Keplr'}
+              {step === 'connecting' ? 'Fetching proof…' : 'Connect with Keplr'}
             </button>
+
+            {proofError && (
+              <div style={{ marginTop: 12, fontSize: 12, color: 'oklch(0.65 0.2 25)', textAlign: 'center' }}>
+                {proofError}
+              </div>
+            )}
           </div>
         )}
 

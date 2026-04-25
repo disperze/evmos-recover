@@ -6,12 +6,14 @@ import { TxBanner } from './components/TxBanner';
 import { KeplrModal } from './components/KeplrModal';
 import { Spinner } from './components/Spinner';
 import { WalletIcon, ChevronDown, RefreshIcon, MetaMaskIcon } from './components/Icons';
+import { fetchBalances as apiFetchBalances } from './data/tokens';
 
 function App() {
   const [walletState, setWalletState] = useState('disconnected');
   const [address, setAddress] = useState('');
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
   const [tokens, setTokens] = useState([]);
   const [claimStates, setClaimStates] = useState({});
   const [claimAllState, setClaimAllState] = useState('idle');
@@ -89,7 +91,15 @@ function App() {
     setTokens([]);
     setClaimStates({});
     setClaimAllState('idle');
-    setLoading(false);
+    setError(null);
+    try {
+      const normalized = await apiFetchBalances(hexAddress);
+      setTokens(normalized);
+    } catch {
+      setError('Failed to load tokens. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const claimToken = async (id) => {
@@ -102,7 +112,7 @@ function App() {
     setModal({ target: unclaimed });
   };
 
-  const handleModalConfirmed = (target) => {
+  const handleModalConfirmed = (target, proofs) => {
     const ids = Array.isArray(target) ? target.map(t => t.id) : [target.id];
     ids.forEach(id => claimToken(id));
   };
@@ -488,6 +498,40 @@ function App() {
 
           {loading && [0, 1, 2, 3].map(i => <SkeletonRow key={i} delay={i * 0.07} />)}
 
+          {!loading && error && walletState === 'connected' && (
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 12,
+              padding: '48px 24px',
+              animation: 'fadeUp 0.4s ease both',
+            }}>
+              <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>{error}</span>
+              <button
+                onClick={() => fetchBalances(address)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 7,
+                  height: 36,
+                  padding: '0 18px',
+                  borderRadius: 9,
+                  border: '1px solid var(--border-hi)',
+                  background: 'var(--bg-3)',
+                  color: 'var(--text)',
+                  fontFamily: 'Space Grotesk, sans-serif',
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                <RefreshIcon size={13} />
+                Retry
+              </button>
+            </div>
+          )}
+
           {!loading && walletState === 'connected' && tokens.length > 0 && tokens.map((token, i) => (
             <TokenRow
               key={token.id}
@@ -498,7 +542,7 @@ function App() {
             />
           ))}
 
-          {!loading && walletState === 'connected' && tokens.length === 0 && (
+          {!loading && !error && walletState === 'connected' && tokens.length === 0 && (
             <EmptyState allClaimed={false} />
           )}
 
@@ -593,8 +637,9 @@ function App() {
       {modal && (
         <KeplrModal
           claimTarget={modal.target}
+          hexAddress={address}
           onClose={() => setModal(null)}
-          onConfirmed={() => { handleModalConfirmed(modal.target); setModal(null); }}
+          onConfirmed={(proofs) => { handleModalConfirmed(modal.target, proofs); setModal(null); }}
         />
       )}
     </div>
