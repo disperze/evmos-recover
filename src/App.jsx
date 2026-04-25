@@ -94,6 +94,11 @@ function App() {
     setError(null);
     try {
       const normalized = await apiFetchBalances(hexAddress);
+      const initialClaimStates = {};
+      normalized.forEach(t => {
+        if (t.claimed) initialClaimStates[t.id] = 'success';
+      });
+      setClaimStates(initialClaimStates);
       setTokens(normalized);
     } catch {
       setError('Failed to load tokens. Please try again.');
