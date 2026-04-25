@@ -42,7 +42,7 @@ Replace all mock/simulated code with real blockchain calls.
 
 ### 4. REST API — Fetch Claimable Tokens
 
-- [ ] `GET {VITE_API_URL}/balances/{hexAddress}` → `[{ denom, amount, symbol, name, usdValue }]`
+- [ ] `GET {VITE_API_URL}/balances/{hexAddress}` → `[{ denom, amount, symbol, name, coingeckoId }]`
 - [ ] Replace mock token load in `App.jsx` with real `fetch` call
 - [ ] Handle `loading`, `empty`, and `error` states for the token list
 
