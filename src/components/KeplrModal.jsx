@@ -22,6 +22,49 @@ function TxRow({ label, value, highlight, mono }) {
   );
 }
 
+function parseCosmWasmError(errorMessage) {
+    // Pattern 1: Look for "message index: X: [Error Text]: execute wasm contract failed"
+    // or "message index: X: [Error Text]" followed by other text
+    const messageIndexPattern = /message index: \d+: ([^:]+?)(?::|$)/;
+    let match = errorMessage.match(messageIndexPattern);
+    
+    if (match && match[1]) {
+        return match[1].trim();
+    }
+    
+    // Pattern 2: Some errors might have the error text directly after "failed to execute message;"
+    const executePattern = /failed to execute message;.*?(?:message index: \d+:)?\s*([^.]+?)(?:\.|:|\s+execute wasm|$)/;
+    match = errorMessage.match(executePattern);
+    
+    if (match && match[1]) {
+        return match[1].trim();
+    }
+    
+    // Pattern 3: Look for quoted error text
+    const quotedPattern = /: '([^']+)'/;
+    match = errorMessage.match(quotedPattern);
+    
+    if (match && match[1]) {
+        return match[1];
+    }
+    
+    // Pattern 4: Look for common error patterns at the beginning after "Unknown desc = "
+    const unknownDescPattern = /Unknown desc = (.*?)(?:: execute wasm|\.|$)/;
+    match = errorMessage.match(unknownDescPattern);
+    
+    if (match && match[1]) {
+        // Further clean up if it contains "message index:"
+        const innerMatch = match[1].match(/message index: \d+: ([^:]+)/);
+        if (innerMatch) {
+            return innerMatch[1].trim();
+        }
+        return match[1].trim();
+    }
+    
+    // If nothing matches, return a generic message or the original truncated
+    return "Unknown error";
+}
+
 export function KeplrModal({ claimTarget, hexAddress, onClose, onConfirmed }) {
   const [step, setStep] = useState('connect');
   const [cosmosAddress, setCosmosAddress] = useState('');
@@ -132,7 +175,8 @@ export function KeplrModal({ claimTarget, hexAddress, onClose, onConfirmed }) {
       } else if (errMsg.includes('already claimed')) {
         setClaimError('This token has already been claimed.');
       } else {
-        setClaimError(`Transaction failed: ${errMsg.slice(0, 80)}`);
+        const contractError = parseCosmWasmError(errMsg);
+        setClaimError(`Transaction failed: ${contractError.slice(0, 80)}`);
       }
       setStep('confirm');
       return;
