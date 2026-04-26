@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react';
 import { useWallet } from './hooks/useWallet';
 import { useTokens } from './hooks/useTokens';
 import { useClaim } from './hooks/useClaim';
@@ -5,9 +6,12 @@ import { TokenRow } from './components/TokenRow';
 import { SkeletonRow } from './components/SkeletonRow';
 import { EmptyState } from './components/EmptyState';
 import { TxBanner } from './components/TxBanner';
-import { KeplrModal } from './components/KeplrModal';
 import { Spinner } from './components/Spinner';
 import { WalletIcon, ChevronDown, RefreshIcon, MetaMaskIcon } from './components/Icons';
+
+const KeplrModal = lazy(() =>
+  import('./components/KeplrModal').then(m => ({ default: m.KeplrModal }))
+);
 
 function App() {
   const { tokens, loading, error, fetchBalances, resetTokens } = useTokens();
@@ -551,12 +555,14 @@ function App() {
       <TxBanner message={claim.banner.message} type={claim.banner.type} txHash={claim.banner.txHash} onDismiss={claim.dismissBanner} />
 
       {claim.modal && (
-        <KeplrModal
-          claimTarget={claim.modal.target}
-          hexAddress={address}
-          onClose={() => claim.setModal(null)}
-          onConfirmed={(target, txHash) => { claim.handleModalConfirmed(target, txHash); claim.setModal(null); }}
-        />
+        <Suspense fallback={null}>
+          <KeplrModal
+            claimTarget={claim.modal.target}
+            hexAddress={address}
+            onClose={() => claim.setModal(null)}
+            onConfirmed={(target, txHash) => { claim.handleModalConfirmed(target, txHash); claim.setModal(null); }}
+          />
+        </Suspense>
       )}
     </div>
   );
