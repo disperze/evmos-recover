@@ -1,4 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useWallet } from './hooks/useWallet';
+import { useTokens } from './hooks/useTokens';
+import { useClaim } from './hooks/useClaim';
 import { TokenRow } from './components/TokenRow';
 import { SkeletonRow } from './components/SkeletonRow';
 import { EmptyState } from './components/EmptyState';
@@ -6,133 +8,37 @@ import { TxBanner } from './components/TxBanner';
 import { KeplrModal } from './components/KeplrModal';
 import { Spinner } from './components/Spinner';
 import { WalletIcon, ChevronDown, RefreshIcon, MetaMaskIcon } from './components/Icons';
-import { fetchBalances as apiFetchBalances } from './data/tokens';
 
 function App() {
-  const [walletState, setWalletState] = useState('disconnected');
-  const [address, setAddress] = useState('');
-  const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [tokens, setTokens] = useState([]);
-  const [claimStates, setClaimStates] = useState({});
-  const [claimAllState, setClaimAllState] = useState('idle');
-  const [banner, setBanner] = useState({ message: '', type: '', txHash: '' });
-  const [modal, setModal] = useState(null);
+  const { tokens, loading, error, fetchBalances, resetTokens } = useTokens();
+  const claim = useClaim(tokens);
 
-  const showBanner = (message, type = 'success', txHash = '') => setBanner({ message, type, txHash });
-  const dismissBanner = () => setBanner({ message: '', type: '' });
+  const handleDisconnected = () => {
+    resetTokens();
+    claim.resetClaim();
+  };
+
+  const handleAccountConnected = async (addr) => {
+    claim.resetClaim();
+    const result = await fetchBalances(addr);
+    if (result) claim.initClaimStates(result.initialClaimStates);
+  };
+
+  const { walletState, address, dropdownOpen, setDropdownOpen,
+    connectWallet, disconnectWallet } = useWallet({
+    onDisconnected: handleDisconnected,
+    onAccountConnected: handleAccountConnected,
+  });
+
+  const handleConnect = () => connectWallet(handleAccountConnected);
+
+  const handleRefresh = async () => {
+    claim.resetClaim();
+    const result = await fetchBalances(address);
+    if (result) claim.initClaimStates(result.initialClaimStates);
+  };
+
   const truncate = (addr) => addr ? `${addr.slice(0, 6)}…${addr.slice(-4)}` : '';
-
-  useEffect(() => {
-    if (!window.ethereum) return;
-
-    window.ethereum.request({ method: 'eth_accounts' }).then(accounts => {
-      if (accounts.length > 0) {
-        setAddress(accounts[0]);
-        setWalletState('connected');
-        fetchBalances(accounts[0]);
-      }
-    });
-
-    const handleAccountsChanged = (accounts) => {
-      if (accounts.length === 0) {
-        setWalletState('disconnected');
-        setAddress('');
-        setTokens([]);
-        setClaimStates({});
-        setClaimAllState('idle');
-        setDropdownOpen(false);
-      } else {
-        setAddress(accounts[0]);
-        fetchBalances(accounts[0]);
-      }
-    };
-
-    const handleChainChanged = () => window.location.reload();
-
-    window.ethereum.on('accountsChanged', handleAccountsChanged);
-    window.ethereum.on('chainChanged', handleChainChanged);
-
-    return () => {
-      window.ethereum.removeListener('accountsChanged', handleAccountsChanged);
-      window.ethereum.removeListener('chainChanged', handleChainChanged);
-    };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const connectWallet = async () => {
-    if (!window.ethereum) {
-      setWalletState('no_metamask');
-      return;
-    }
-    setWalletState('connecting');
-    try {
-      const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-      setAddress(accounts[0]);
-      setWalletState('connected');
-      fetchBalances(accounts[0]);
-    } catch (err) {
-      setWalletState('disconnected');
-      if (err.code !== 4001) showBanner('Connection failed. Try again.', 'pending');
-    }
-  };
-
-  const disconnectWallet = () => {
-    setWalletState('disconnected');
-    setAddress('');
-    setTokens([]);
-    setClaimStates({});
-    setClaimAllState('idle');
-    setDropdownOpen(false);
-  };
-
-  const fetchBalances = async (hexAddress) => {
-    setLoading(true);
-    setTokens([]);
-    setClaimStates({});
-    setClaimAllState('idle');
-    setError(null);
-    try {
-      const normalized = await apiFetchBalances(hexAddress);
-      const initialClaimStates = {};
-      normalized.forEach(t => {
-        if (t.claimed) initialClaimStates[t.id] = 'success';
-      });
-      setClaimStates(initialClaimStates);
-      setTokens(normalized);
-    } catch {
-      setError('Failed to load tokens. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const claimToken = async (id) => {
-    setClaimStates(s => ({ ...s, [id]: 'pending' }));
-  };
-
-  const openClaimModal = (token) => setModal({ target: token });
-  const openClaimAllModal = () => {
-    const unclaimed = tokens.filter(t => !claimStates[t.id] || claimStates[t.id] === 'idle');
-    setModal({ target: unclaimed });
-  };
-
-  const handleModalConfirmed = (target, txHash) => {
-    const ids = Array.isArray(target) ? target.map(t => t.id) : [target.id];
-    setClaimStates(s => {
-      const next = { ...s };
-      ids.forEach(id => { next[id] = 'success'; });
-      return next;
-    });
-    showBanner('Claim submitted!', 'success', txHash);
-  };
-
-  const allClaimed = tokens.length > 0 && tokens.every(t => claimStates[t.id] === 'success');
-  const pendingCount = tokens.filter(t => claimStates[t.id] === 'pending').length;
-  const unclaimedCount = tokens.filter(t => !claimStates[t.id] || claimStates[t.id] === 'idle').length;
-  const totalUsd = tokens
-    .filter(t => !claimStates[t.id] || claimStates[t.id] !== 'success')
-    .reduce((acc, t) => acc + parseFloat(t.usd.replace(/,/g, '')), 0);
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
@@ -183,7 +89,7 @@ function App() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           {walletState === 'connected' && (
             <button
-              onClick={() => fetchBalances(address)}
+              onClick={handleRefresh}
               title="Refresh balances"
               style={{
                 width: 36,
@@ -207,7 +113,7 @@ function App() {
 
           {(walletState === 'disconnected' || walletState === 'no_metamask') && (
             <button
-              onClick={connectWallet}
+              onClick={handleConnect}
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -394,18 +300,18 @@ function App() {
                   fontWeight: 700,
                   padding: '2px 8px',
                   borderRadius: 20,
-                  background: unclaimedCount > 0 ? 'var(--orange-dim)' : 'var(--green-dim)',
-                  color: unclaimedCount > 0 ? 'var(--orange)' : 'var(--green)',
-                  border: `1px solid ${unclaimedCount > 0 ? 'oklch(0.68 0.19 46 / 0.25)' : 'oklch(0.68 0.16 145 / 0.25)'}`,
+                  background: claim.unclaimedCount > 0 ? 'var(--orange-dim)' : 'var(--green-dim)',
+                  color: claim.unclaimedCount > 0 ? 'var(--orange)' : 'var(--green)',
+                  border: `1px solid ${claim.unclaimedCount > 0 ? 'oklch(0.68 0.19 46 / 0.25)' : 'oklch(0.68 0.16 145 / 0.25)'}`,
                 }}>
-                  {unclaimedCount > 0 ? `${unclaimedCount} available` : 'All claimed'}
+                  {claim.unclaimedCount > 0 ? `${claim.unclaimedCount} available` : 'All claimed'}
                 </span>
               )}
             </div>
-            {walletState === 'connected' && !loading && tokens.length > 0 && unclaimedCount > 0 && (
+            {walletState === 'connected' && !loading && tokens.length > 0 && claim.unclaimedCount > 0 && (
               <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
                 ≈ <span style={{ color: 'var(--text)', fontWeight: 600 }}>
-                  ${totalUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  ${claim.totalUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </span> total
               </div>
             )}
@@ -480,7 +386,7 @@ function App() {
                 Connect your wallet to see any claimable balances associated with your address.
               </div>
               <button
-                onClick={connectWallet}
+                onClick={handleConnect}
                 style={{
                   marginTop: 24,
                   display: 'flex',
@@ -519,7 +425,7 @@ function App() {
             }}>
               <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>{error}</span>
               <button
-                onClick={() => fetchBalances(address)}
+                onClick={handleRefresh}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -547,8 +453,8 @@ function App() {
               key={token.id}
               token={token}
               index={i}
-              claimState={claimStates[token.id]}
-              onClaim={() => openClaimModal(token)}
+              claimState={claim.claimStates[token.id]}
+              onClaim={() => claim.openClaimModal(token)}
             />
           ))}
 
@@ -556,13 +462,13 @@ function App() {
             <EmptyState allClaimed={false} />
           )}
 
-          {!loading && walletState === 'connected' && tokens.length > 0 && allClaimed && (
+          {!loading && walletState === 'connected' && tokens.length > 0 && claim.allClaimed && (
             <div style={{ borderTop: '1px solid var(--border)' }}>
               <EmptyState allClaimed={true} />
             </div>
           )}
 
-          {!loading && walletState === 'connected' && tokens.length > 0 && !allClaimed && (
+          {!loading && walletState === 'connected' && tokens.length > 0 && !claim.allClaimed && (
             <div style={{
               padding: '20px 24px',
               borderTop: '1px solid var(--border)',
@@ -574,13 +480,13 @@ function App() {
               animation: 'fadeUp 0.5s ease 0.3s both',
             }}>
               <div style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5 }}>
-                {pendingCount > 0
-                  ? <span style={{ color: 'var(--orange)' }}>{pendingCount} transaction{pendingCount > 1 ? 's' : ''} pending…</span>
-                  : `${unclaimedCount} asset${unclaimedCount !== 1 ? 's' : ''} available to claim`}
+                {claim.pendingCount > 0
+                  ? <span style={{ color: 'var(--orange)' }}>{claim.pendingCount} transaction{claim.pendingCount > 1 ? 's' : ''} pending…</span>
+                  : `${claim.unclaimedCount} asset${claim.unclaimedCount !== 1 ? 's' : ''} available to claim`}
               </div>
               <button
-                onClick={openClaimAllModal}
-                disabled={claimAllState === 'pending' || pendingCount > 0}
+                onClick={claim.openClaimAllModal}
+                disabled={claim.claimAllState === 'pending' || claim.pendingCount > 0}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -590,37 +496,37 @@ function App() {
                   padding: '0 28px',
                   borderRadius: 9,
                   border: 'none',
-                  background: claimAllState === 'pending' || pendingCount > 0
+                  background: claim.claimAllState === 'pending' || claim.pendingCount > 0
                     ? 'oklch(0.68 0.19 46 / 0.25)'
                     : 'var(--orange)',
                   color: 'white',
                   fontFamily: 'Space Grotesk, sans-serif',
                   fontSize: 14,
                   fontWeight: 700,
-                  cursor: claimAllState === 'pending' || pendingCount > 0 ? 'not-allowed' : 'pointer',
+                  cursor: claim.claimAllState === 'pending' || claim.pendingCount > 0 ? 'not-allowed' : 'pointer',
                   letterSpacing: '0.01em',
                   transition: 'all 0.18s',
-                  boxShadow: claimAllState !== 'pending' && pendingCount === 0
+                  boxShadow: claim.claimAllState !== 'pending' && claim.pendingCount === 0
                     ? '0 4px 20px oklch(0.68 0.19 46 / 0.35)'
                     : 'none',
                 }}
                 onMouseEnter={e => {
-                  if (claimAllState !== 'pending' && pendingCount === 0) {
+                  if (claim.claimAllState !== 'pending' && claim.pendingCount === 0) {
                     e.currentTarget.style.background = 'oklch(0.73 0.19 46)';
                     e.currentTarget.style.boxShadow = '0 6px 28px oklch(0.68 0.19 46 / 0.45)';
                   }
                 }}
                 onMouseLeave={e => {
-                  e.currentTarget.style.background = claimAllState === 'pending' || pendingCount > 0
+                  e.currentTarget.style.background = claim.claimAllState === 'pending' || claim.pendingCount > 0
                     ? 'oklch(0.68 0.19 46 / 0.25)'
                     : 'var(--orange)';
-                  e.currentTarget.style.boxShadow = claimAllState !== 'pending' && pendingCount === 0
+                  e.currentTarget.style.boxShadow = claim.claimAllState !== 'pending' && claim.pendingCount === 0
                     ? '0 4px 20px oklch(0.68 0.19 46 / 0.35)'
                     : 'none';
                 }}
               >
-                {(claimAllState === 'pending' || pendingCount > 0) ? <Spinner size={15} color="white" /> : null}
-                {(claimAllState === 'pending' || pendingCount > 0) ? 'Claiming…' : 'Claim All'}
+                {(claim.claimAllState === 'pending' || claim.pendingCount > 0) ? <Spinner size={15} color="white" /> : null}
+                {(claim.claimAllState === 'pending' || claim.pendingCount > 0) ? 'Claiming…' : 'Claim All'}
               </button>
             </div>
           )}
@@ -642,14 +548,14 @@ function App() {
         )}
       </main>
 
-      <TxBanner message={banner.message} type={banner.type} txHash={banner.txHash} onDismiss={dismissBanner} />
+      <TxBanner message={claim.banner.message} type={claim.banner.type} txHash={claim.banner.txHash} onDismiss={claim.dismissBanner} />
 
-      {modal && (
+      {claim.modal && (
         <KeplrModal
-          claimTarget={modal.target}
+          claimTarget={claim.modal.target}
           hexAddress={address}
-          onClose={() => setModal(null)}
-          onConfirmed={(target, txHash) => { handleModalConfirmed(target, txHash); setModal(null); }}
+          onClose={() => claim.setModal(null)}
+          onConfirmed={(target, txHash) => { claim.handleModalConfirmed(target, txHash); claim.setModal(null); }}
         />
       )}
     </div>
