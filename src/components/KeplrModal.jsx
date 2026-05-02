@@ -65,7 +65,7 @@ function parseCosmWasmError(errorMessage) {
     return "Unknown error";
 }
 
-export function KeplrModal({ claimTarget, hexAddress, onClose, onConfirmed }) {
+export function KeplrModal({ claimTarget, hexAddress, signMessage, onClose, onConfirmed }) {
   const [step, setStep] = useState('connect');
   const [cosmosAddress, setCosmosAddress] = useState('');
   const [proofs, setProofs] = useState({});
@@ -120,15 +120,11 @@ export function KeplrModal({ claimTarget, hexAddress, onClose, onConfirmed }) {
     try {
       const msgStr = JSON.stringify({ address: cosmosAddress, note: "Recover EVMOS" });
       claimMsgB64 = btoa(msgStr);
-      const msgHex = '0x' + Array.from(new TextEncoder().encode(msgStr)).map(b => b.toString(16).padStart(2, '0')).join('');
-      const sigHex = await window.ethereum.request({
-        method: 'personal_sign',
-        params: [msgHex, hexAddress],
-      });
+      const sigHex = await signMessage(msgStr);
       const sigBytes = sigHex.slice(2).match(/.{2}/g).map(b => parseInt(b, 16));
       signature = btoa(String.fromCharCode(...sigBytes));
     } catch (err) {
-      setClaimError(err?.code === 4001 ? 'MetaMask signature rejected.' : 'MetaMask signing failed. Please try again.');
+      setClaimError(err?.code === 4001 ? 'Signature rejected.' : 'Wallet signing failed. Please try again.');
       setStep('confirm');
       return;
     }

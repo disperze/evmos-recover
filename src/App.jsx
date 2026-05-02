@@ -7,7 +7,7 @@ import { SkeletonRow } from './components/SkeletonRow';
 import { EmptyState } from './components/EmptyState';
 import { TxBanner } from './components/TxBanner';
 import { Spinner } from './components/Spinner';
-import { WalletIcon, ChevronDown, RefreshIcon, MetaMaskIcon } from './components/Icons';
+import { WalletIcon, ChevronDown, RefreshIcon } from './components/Icons';
 
 const KeplrModal = lazy(() =>
   import('./components/KeplrModal').then(m => ({ default: m.KeplrModal }))
@@ -29,7 +29,7 @@ function App() {
   };
 
   const { walletState, address, dropdownOpen, setDropdownOpen,
-    connectWallet, disconnectWallet } = useWallet({
+    connectWallet, disconnectWallet, signMessage } = useWallet({
     onDisconnected: handleDisconnected,
     onAccountConnected: handleAccountConnected,
   });
@@ -115,7 +115,7 @@ function App() {
             </button>
           )}
 
-          {(walletState === 'disconnected' || walletState === 'no_metamask') && (
+          {walletState === 'disconnected' && (
             <button
               onClick={handleConnect}
               style={{
@@ -133,13 +133,13 @@ function App() {
                 fontWeight: 600,
                 cursor: 'pointer',
                 transition: 'all 0.18s',
-                animation: walletState === 'disconnected' ? 'pulseGlow 2.5s ease infinite' : 'none',
+                animation: 'pulseGlow 2.5s ease infinite',
               }}
               onMouseEnter={e => { e.currentTarget.style.background = 'oklch(0.68 0.19 46 / 0.22)'; e.currentTarget.style.animation = 'none'; }}
-              onMouseLeave={e => { e.currentTarget.style.background = 'var(--orange-dim)'; e.currentTarget.style.animation = walletState === 'disconnected' ? 'pulseGlow 2.5s ease infinite' : 'none'; }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'var(--orange-dim)'; e.currentTarget.style.animation = 'pulseGlow 2.5s ease infinite'; }}
             >
               <WalletIcon size={15} />
-              {walletState === 'no_metamask' ? 'MetaMask not found' : 'Connect Wallet'}
+              Connect Wallet
             </button>
           )}
 
@@ -321,49 +321,7 @@ function App() {
             )}
           </div>
 
-          {walletState === 'no_metamask' && !loading && (
-            <div style={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              padding: '56px 24px',
-              animation: 'fadeUp 0.4s ease both',
-            }}>
-              <div style={{ marginBottom: 18 }}>
-                <MetaMaskIcon size={52} />
-              </div>
-              <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 8 }}>MetaMask not detected</div>
-              <div style={{ fontSize: 13, color: 'var(--text-muted)', textAlign: 'center', maxWidth: 280, lineHeight: 1.65, marginBottom: 24 }}>
-                Install the MetaMask browser extension to connect your wallet and claim your assets.
-              </div>
-              <a
-                href="https://metamask.io/download/"
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 8,
-                  height: 42,
-                  padding: '0 22px',
-                  borderRadius: 9,
-                  border: '1.5px solid var(--orange)',
-                  background: 'var(--orange-dim)',
-                  color: 'var(--orange)',
-                  fontFamily: 'Space Grotesk, sans-serif',
-                  fontSize: 14,
-                  fontWeight: 600,
-                  textDecoration: 'none',
-                  cursor: 'pointer',
-                }}
-              >
-                <MetaMaskIcon size={16} />
-                Install MetaMask
-              </a>
-            </div>
-          )}
-
-          {walletState !== 'connected' && walletState !== 'no_metamask' && !loading && (
+          {walletState !== 'connected' && !loading && (
             <div style={{
               display: 'flex',
               flexDirection: 'column',
@@ -559,6 +517,7 @@ function App() {
           <KeplrModal
             claimTarget={claim.modal.target}
             hexAddress={address}
+            signMessage={signMessage}
             onClose={() => claim.setModal(null)}
             onConfirmed={(target, txHash) => { claim.handleModalConfirmed(target, txHash); claim.setModal(null); }}
           />
