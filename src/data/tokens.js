@@ -40,10 +40,10 @@ export async function fetchBalances(hexAddress) {
   });
 }
 
-export async function fetchProofs(hexAddress, tokens) {
+export async function fetchProofs(hexAddress, tokens, signature) {
   const results = await Promise.all(
     tokens.map(t =>
-      fetch(`${API_URL}/proof/${hexAddress}/${t.denom}`)
+      fetch(`${API_URL}/proof/${hexAddress}/${t.denom}?signature=${encodeURIComponent(signature)}`)
         .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
         .then(data => ({ denom: t.denom, proof: data.proof }))
     )

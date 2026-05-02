@@ -68,7 +68,6 @@ function parseCosmWasmError(errorMessage) {
 export function KeplrModal({ claimTarget, hexAddress, signMessage, onClose, onConfirmed }) {
   const [step, setStep] = useState('connect');
   const [cosmosAddress, setCosmosAddress] = useState('');
-  const [proofs, setProofs] = useState({});
   const [keplrError, setKeplrError] = useState(null);
   const [claimError, setClaimError] = useState(null);
   const [txHash, setTxHash] = useState('');
@@ -97,16 +96,13 @@ export function KeplrModal({ claimTarget, hexAddress, signMessage, onClose, onCo
       const key = await window.keplr.getKey(COSMOS_CHAIN_ID);
       setCosmosAddress(key.bech32Address);
 
-      const tokens = isBatch ? claimTarget : [claimTarget];
-      const proofMap = await fetchProofs(hexAddress, tokens);
-      setProofs(proofMap);
       setStep('confirm');
     } catch (err) {
       const msg = err?.message ?? '';
       setKeplrError(
         msg.includes('rejected') || msg.includes('Request rejected')
           ? 'Keplr connection rejected. Please approve the request.'
-          : 'Could not connect to Keplr or fetch Merkle proof. Please try again.'
+          : 'Could not connect to Keplr. Please try again.'
       );
       setStep('connect');
     }
@@ -116,13 +112,16 @@ export function KeplrModal({ claimTarget, hexAddress, signMessage, onClose, onCo
     setStep('submitting');
     setClaimError(null);
 
-    let signature, claimMsgB64;
+    const tokens = isBatch ? claimTarget : [claimTarget];
+    let signature, claimMsgB64, proofs;
     try {
       const msgStr = JSON.stringify({ address: cosmosAddress, note: "Recover EVMOS" });
       claimMsgB64 = btoa(msgStr);
       const sigHex = await signMessage(msgStr);
       const sigBytes = sigHex.slice(2).match(/.{2}/g).map(b => parseInt(b, 16));
       signature = btoa(String.fromCharCode(...sigBytes));
+
+      proofs = await fetchProofs(hexAddress, tokens, sigHex);
     } catch (err) {
       setClaimError(err?.code === 4001 ? 'Signature rejected.' : 'Wallet signing failed. Please try again.');
       setStep('confirm');
@@ -141,7 +140,6 @@ export function KeplrModal({ claimTarget, hexAddress, signMessage, onClose, onCo
       return;
     }
 
-    const tokens = isBatch ? claimTarget : [claimTarget];
     let lastTxHash = '';
 
     try {
