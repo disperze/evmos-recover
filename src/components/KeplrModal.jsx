@@ -121,7 +121,7 @@ export function KeplrModal({ claimTarget, hexAddress, signMessage, onClose, onCo
       const sigBytes = sigHex.slice(2).match(/.{2}/g).map(b => parseInt(b, 16));
       signature = btoa(String.fromCharCode(...sigBytes));
 
-      proofs = await fetchProofs(hexAddress, tokens, sigHex);
+      proofs = await fetchProofs(hexAddress, tokens, msgStr, sigHex);
     } catch (err) {
       setClaimError(err?.code === 4001 ? 'Signature rejected.' : 'Wallet signing failed. Please try again.');
       setStep('confirm');

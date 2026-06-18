@@ -40,10 +40,14 @@ export async function fetchBalances(hexAddress) {
   });
 }
 
-export async function fetchProofs(hexAddress, tokens, signature) {
+export async function fetchProofs(hexAddress, tokens, message, signature) {
   const results = await Promise.all(
     tokens.map(t =>
-      fetch(`${API_URL}/proof/${hexAddress}/${t.denom}?signature=${encodeURIComponent(signature)}`)
+      fetch(`${API_URL}/proof`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ address: hexAddress, denom: t.denom, message, signature }),
+      })
         .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
         .then(data => ({ denom: t.denom, proof: data.proof }))
     )
