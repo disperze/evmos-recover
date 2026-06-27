@@ -14,6 +14,7 @@ async function fetchUsdPrices(coingeckoIds) {
 
 export async function fetchBalances(hexAddress) {
   const res = await fetch(`${API_URL}/balances/${hexAddress}`);
+  if (res.status === 404) return [];
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const data = await res.json();
 
