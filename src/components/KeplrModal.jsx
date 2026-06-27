@@ -75,7 +75,7 @@ export function KeplrModal({ claimTarget, hexAddress, signMessage, onClose, onCo
   const isBatch = Array.isArray(claimTarget);
   const label = isBatch
     ? `${claimTarget.length} assets`
-    : `${claimTarget.amount} ${claimTarget.symbol}`;
+    : `${(Number(claimTarget.amount) / 1000000).toFixed(6)} ${claimTarget.symbol}`;
 
   const usdLabel = isBatch
     ? `$${claimTarget.reduce((s, t) => s + parseFloat(t.usd.replace(/,/g, '')), 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
