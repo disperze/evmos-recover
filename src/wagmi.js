@@ -1,27 +1,10 @@
-import { connectorsForWallets , getDefaultConfig } from '@rainbow-me/rainbowkit';
-import {
-  metaMaskWallet,
-  phantomWallet,
-  injectedWallet,
-} from '@rainbow-me/rainbowkit/wallets';
+import { getDefaultConfig } from '@rainbow-me/rainbowkit';
 import { mainnet } from 'wagmi/chains';
 import { QueryClient } from '@tanstack/react-query';
-import { createConfig } from 'wagmi';
 
-const connectors = connectorsForWallets(
-  [
-    {
-      groupName: 'Recommended',
-      wallets: [metaMaskWallet, phantomWallet, injectedWallet],
-    },
-  ],
-  {
-    appName: 'Evmos Recover',
-  }
-);
-
-export const config = createConfig({
-  connectors,
+export const config = getDefaultConfig({
+  appName: 'Evmos Recover',
+  projectId: import.meta.env.VITE_WALLETCONNECT_PROJECT_ID,
   chains: [mainnet],
   ssr: false,
 });
