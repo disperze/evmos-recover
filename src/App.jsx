@@ -3,7 +3,6 @@ import { getAddress, isAddress, zeroAddress } from 'viem';
 import { useWallet } from './hooks/useWallet';
 import { useCosmosWallet } from './hooks/useCosmosWallet';
 import { useAllocation } from './hooks/useAllocation';
-import { CosmosConnect } from './components/CosmosConnect';
 import { TokenLogo } from './components/TokenLogo';
 import { TxBanner } from './components/TxBanner';
 import { Spinner } from './components/Spinner';
@@ -15,27 +14,24 @@ const ClaimModal = lazy(() =>
   import('./components/ClaimModal').then(m => ({ default: m.ClaimModal }))
 );
 
-function Section({ step, title, children, aside }) {
+function Section({ step, title, children }) {
   return (
     <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)', animation: 'fadeUp 0.4s ease both' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 14 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{
-            width: 20,
-            height: 20,
-            borderRadius: '50%',
-            background: 'var(--bg-3)',
-            border: '1px solid var(--border-hi)',
-            fontSize: 11,
-            fontWeight: 700,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: 'var(--text-muted)',
-          }}>{step}</span>
-          <span style={{ fontSize: 13, fontWeight: 600 }}>{title}</span>
-        </div>
-        {aside}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+        <span style={{
+          width: 20,
+          height: 20,
+          borderRadius: '50%',
+          background: 'var(--bg-3)',
+          border: '1px solid var(--border-hi)',
+          fontSize: 11,
+          fontWeight: 700,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: 'var(--text-muted)',
+        }}>{step}</span>
+        <span style={{ fontSize: 13, fontWeight: 600 }}>{title}</span>
       </div>
       {children}
     </div>
@@ -67,8 +63,14 @@ function App() {
   const [modalOpen, setModalOpen] = useState(false);
   const [banner, setBanner] = useState({ message: '', type: '', txHash: '' });
 
-  const { walletState, address, dropdownOpen, setDropdownOpen, connectWallet, disconnectWallet } = evm;
-  const handleConnect = connectWallet;
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const { walletState, address } = evm;
+
+  const handleConnect = () => cosmos.connect();
+  const disconnectWallet = () => {
+    cosmos.disconnect();
+    setDropdownOpen(false);
+  };
 
   const recipientRaw = recipientInput.trim() || address;
   const recipientValid = isAddress(recipientRaw) && recipientRaw.toLowerCase() !== zeroAddress;
@@ -84,6 +86,7 @@ function App() {
   };
 
   const truncate = (addr) => addr ? `${addr.slice(0, 6)}…${addr.slice(-4)}` : '';
+  const truncateCosmos = (addr) => addr ? `${addr.slice(0, 10)}…${addr.slice(-6)}` : '';
   const deadlineLabel = allocation.deadline !== undefined
     ? new Date(Number(allocation.deadline) * 1000).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
     : '';
@@ -96,7 +99,7 @@ function App() {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        padding: '0 48px',
+        padding: '0 clamp(16px, 4vw, 48px)',
         height: 68,
         borderBottom: '1px solid var(--border)',
         background: 'oklch(0.11 0.008 260 / 0.92)',
@@ -120,8 +123,8 @@ function App() {
               <path d="M5.5 10h5" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
             </svg>
           </div>
-          <span style={{ fontWeight: 700, fontSize: 16, letterSpacing: '-0.3px' }}>Evmos Recover</span>
-          <span style={{
+          <span className="hide-sm" style={{ fontWeight: 700, fontSize: 16, letterSpacing: '-0.3px' }}>Evmos Recover</span>
+          <span className="hide-sm" style={{
             fontSize: 10,
             fontWeight: 600,
             letterSpacing: '0.08em',
@@ -135,7 +138,7 @@ function App() {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          {walletState === 'disconnected' && (
+          {cosmos.status === 'disconnected' && (
             <button
               onClick={handleConnect}
               style={{
@@ -159,11 +162,11 @@ function App() {
               onMouseLeave={e => { e.currentTarget.style.background = 'var(--orange-dim)'; e.currentTarget.style.animation = 'pulseGlow 2.5s ease infinite'; }}
             >
               <WalletIcon size={15} />
-              Connect Wallet
+              Connect Keplr Wallet
             </button>
           )}
 
-          {walletState === 'connecting' && (
+          {cosmos.status === 'connecting' && (
             <button disabled style={{
               display: 'flex',
               alignItems: 'center',
@@ -184,7 +187,7 @@ function App() {
             </button>
           )}
 
-          {walletState === 'connected' && (
+          {cosmos.status === 'connected' && (
             <div style={{ position: 'relative' }}>
               <button
                 onClick={() => setDropdownOpen(o => !o)}
@@ -204,6 +207,7 @@ function App() {
                   color: 'var(--text)',
                   cursor: 'pointer',
                   letterSpacing: '-0.2px',
+                  whiteSpace: 'nowrap',
                 }}
               >
                 <div style={{
@@ -213,7 +217,7 @@ function App() {
                   background: 'var(--green)',
                   boxShadow: '0 0 8px var(--green)',
                 }} />
-                {truncate(address)}
+                {truncateCosmos(cosmos.key.bech32Address)}
                 <span style={{
                   display: 'flex',
                   transform: dropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)',
@@ -234,6 +238,7 @@ function App() {
                   overflow: 'hidden',
                   boxShadow: '0 12px 40px oklch(0 0 0 / 0.4)',
                   minWidth: 160,
+                  maxWidth: 'calc(100vw - 32px)',
                   zIndex: 50,
                   animation: 'fadeUp 0.15s ease',
                 }}>
@@ -244,8 +249,9 @@ function App() {
                     fontFamily: 'Space Mono, monospace',
                     borderBottom: '1px solid var(--border)',
                     letterSpacing: '-0.2px',
+                    wordBreak: 'break-all',
                   }}>
-                    {truncate(address)}
+                    {cosmos.key.bech32Address}
                   </div>
                   <button
                     onClick={disconnectWallet}
@@ -295,7 +301,7 @@ function App() {
             Recover your assets
           </h1>
           <p style={{ fontSize: 15, color: 'var(--text-muted)', maxWidth: 420, lineHeight: 1.65, margin: '0 auto' }}>
-            Sign with your Cosmos wallet to claim your snapshot USDC to an Ethereum address.
+            Sign with your Keplr wallet to claim your snapshot USDC to an Ethereum address.
           </p>
         </div>
 
@@ -330,44 +336,65 @@ function App() {
           {allocation.closed && <Notice>Claims closed. The claim deadline has passed.</Notice>}
           {allocation.paused && <Notice>Claims are temporarily paused.</Notice>}
 
-          <Section
-            step={1}
-            title="Cosmos account"
-            aside={cosmos.status === 'connected' && (
-              <button
-                onClick={() => { cosmos.disconnect(); setModalOpen(false); }}
-                style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}
-              >
-                Disconnect
-              </button>
-            )}
-          >
-            {cosmos.status === 'connected' ? (
+          {cosmos.status !== 'connected' && (
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              padding: '56px 24px',
+              animation: 'fadeUp 0.4s ease both',
+            }}>
               <div style={{
+                width: 56,
+                height: 56,
+                borderRadius: '50%',
+                background: 'var(--bg-3)',
+                border: '1.5px solid var(--border)',
                 display: 'flex',
                 alignItems: 'center',
-                gap: 10,
-                background: 'var(--bg-3)',
-                border: '1px solid var(--border)',
-                borderRadius: 10,
-                padding: '10px 14px',
+                justifyContent: 'center',
+                marginBottom: 18,
+                color: 'var(--text-dim)',
               }}>
-                <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--green)', boxShadow: '0 0 8px var(--green)', flexShrink: 0 }} />
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: 12, fontFamily: 'Space Mono, monospace', wordBreak: 'break-all' }}>{cosmos.key.bech32Address}</div>
-                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{cosmos.wallet.name} · {cosmos.chainId}</div>
-                </div>
+                <WalletIcon size={22} />
               </div>
-            ) : (
-              <CosmosConnect connecting={cosmos.status === 'connecting'} onConnect={cosmos.connect} />
-            )}
-            {cosmos.error && (
-              <div style={{ marginTop: 10, fontSize: 12, color: 'var(--red)', lineHeight: 1.5 }}>{cosmos.error}</div>
-            )}
-          </Section>
+              <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 8 }}>Connect your Keplr wallet</div>
+              <div style={{ fontSize: 13, color: 'var(--text-muted)', textAlign: 'center', maxWidth: 300, lineHeight: 1.65 }}>
+                Connect the Cosmos account from the snapshot to see your claimable USDC.
+              </div>
+              <button
+                onClick={handleConnect}
+                disabled={cosmos.status === 'connecting'}
+                style={{
+                  marginTop: 24,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  height: 42,
+                  padding: '0 22px',
+                  borderRadius: 9,
+                  border: '1.5px solid var(--orange)',
+                  background: 'var(--orange-dim)',
+                  color: 'var(--orange)',
+                  fontFamily: 'Space Grotesk, sans-serif',
+                  fontSize: 14,
+                  fontWeight: 600,
+                  cursor: cosmos.status === 'connecting' ? 'not-allowed' : 'pointer',
+                }}
+              >
+                {cosmos.status === 'connecting' ? <Spinner size={15} /> : <WalletIcon size={15} />}
+                {cosmos.status === 'connecting' ? 'Connecting…' : 'Connect Keplr Wallet'}
+              </button>
+              {cosmos.error && (
+                <div style={{ marginTop: 14, fontSize: 12, color: 'var(--red)', textAlign: 'center', maxWidth: 320, lineHeight: 1.5 }}>
+                  {cosmos.error}
+                </div>
+              )}
+            </div>
+          )}
 
           {cosmos.status === 'connected' && (
-            <Section step={2} title="Allocation">
+            <Section step={1} title="Allocation">
               {allocation.loading || allocation.claimedLoading ? (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
                   <div className="skeleton" style={{ width: 36, height: 36, borderRadius: '50%' }} />
@@ -402,7 +429,7 @@ function App() {
           )}
 
           {cosmos.status === 'connected' && entry && !claimed && (
-            <Section step={3} title="Ethereum recipient">
+            <Section step={2} title="Ethereum recipient">
               <input
                 value={recipientInput}
                 onChange={e => setRecipientInput(e.target.value)}
@@ -443,11 +470,19 @@ function App() {
             }}>
               <div style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5, flex: '1 1 200px' }}>
                 {walletState === 'connected'
-                  ? <>Gas is paid by {truncate(address)} on {EVM_CHAIN.name}.</>
+                  ? <>
+                      Gas is paid by {truncate(address)} on {EVM_CHAIN.name}.{' '}
+                      <button
+                        onClick={evm.disconnectWallet}
+                        style={{ background: 'none', border: 'none', padding: 0, color: 'var(--text)', textDecoration: 'underline', fontSize: 'inherit', fontFamily: 'inherit', cursor: 'pointer' }}
+                      >
+                        Disconnect
+                      </button>
+                    </>
                   : <>Connect an Ethereum wallet to pay the gas for the claim.</>}
               </div>
               <button
-                onClick={walletState === 'connected' ? () => setModalOpen(true) : handleConnect}
+                onClick={walletState === 'connected' ? () => setModalOpen(true) : evm.connectWallet}
                 disabled={!canClaim || (walletState === 'connected' && !recipientValid)}
                 style={{
                   display: 'flex',

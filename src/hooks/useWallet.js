@@ -1,32 +1,16 @@
-import { useState } from 'react';
 import { useAccount, useDisconnect } from 'wagmi';
 import { useConnectModal } from '@rainbow-me/rainbowkit';
 
+// Ethereum wallet that pays the gas for the claim transaction.
 export function useWallet() {
-  const [dropdownOpen, setDropdownOpen] = useState(false);
-
   const { address, status } = useAccount();
   const { disconnect } = useDisconnect();
   const { openConnectModal } = useConnectModal();
 
-  const walletState =
-    status === 'connected' ? 'connected' :
-    (status === 'connecting' || status === 'reconnecting') ? 'connecting' :
-    'disconnected';
-
-  const connectWallet = () => openConnectModal?.();
-
-  const disconnectWallet = () => {
-    disconnect();
-    setDropdownOpen(false);
-  };
-
   return {
-    walletState,
+    walletState: status === 'connected' ? 'connected' : 'disconnected',
     address: address ?? '',
-    dropdownOpen,
-    setDropdownOpen,
-    connectWallet,
-    disconnectWallet,
+    connectWallet: () => openConnectModal?.(),
+    disconnectWallet: () => disconnect(),
   };
 }

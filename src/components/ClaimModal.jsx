@@ -198,7 +198,7 @@ export function ClaimModal({ entry, recipient, payer, cosmos, onClose, onClaimed
                 {claimText.data ?? (claimText.error ? 'Could not load the claim message.' : <Spinner size={14} />)}
               </div>
               <div style={{ fontSize: 11.5, color: 'var(--text-muted)', lineHeight: 1.55, marginTop: 8 }}>
-                Your {cosmos.wallet.name} popup shows the amount in base units:
+                Your Keplr popup shows the amount in base units:
                 {' '}{entry.amount} = {formatUsdc(entry.amount)} USDC. Signing is free; the signature only
                 authorizes payment to the recipient above.
               </div>
@@ -227,7 +227,7 @@ export function ClaimModal({ entry, recipient, payer, cosmos, onClose, onClaimed
               }}
             >
               {busy && <Spinner size={15} color="white" />}
-              {busy ? BUSY_LABELS[step] : args ? 'Retry transaction' : `Sign with ${cosmos.wallet.name} & claim`}
+              {busy ? BUSY_LABELS[step] : args ? 'Retry transaction' : 'Sign with Keplr & claim'}
             </button>
 
             {error && (

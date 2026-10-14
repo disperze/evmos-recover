@@ -102,3 +102,7 @@ body::after {
   animation: shimmer 1.6s infinite linear;
   border-radius: 6px;
 }
+
+@media (max-width: 480px) {
+  .hide-sm { display: none; }
+}
