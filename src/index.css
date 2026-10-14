@@ -15,6 +15,7 @@
   --green:      oklch(0.68 0.16 145);
   --green-dim:  oklch(0.68 0.16 145 / 0.12);
   --red:        oklch(0.60 0.18 25);
+  --red-dim:    oklch(0.60 0.18 25 / 0.12);
   --radius:     10px;
   --radius-lg:  16px;
 }

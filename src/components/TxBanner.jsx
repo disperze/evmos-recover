@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { CheckIcon } from './Icons';
 import { Spinner } from './Spinner';
+import { EXPLORER_URL } from '../wagmi';
 
 export function TxBanner({ message, type, txHash, onDismiss }) {
   useEffect(() => {
@@ -37,9 +38,9 @@ export function TxBanner({ message, type, txHash, onDismiss }) {
         ? <CheckIcon size={14} color="var(--green)" />
         : <Spinner size={14} color="var(--orange)" />}
       <span>{message}</span>
-      {isSuccess && txHash && (
+      {isSuccess && txHash && EXPLORER_URL && (
         <a
-          href={`https://www.mintscan.io/cosmos/tx/${txHash}`}
+          href={`${EXPLORER_URL}/tx/${txHash}`}
           target="_blank"
           rel="noopener noreferrer"
           style={{
