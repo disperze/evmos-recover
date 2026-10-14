@@ -1,48 +1,95 @@
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useState } from 'react';
+import { getAddress, isAddress, zeroAddress } from 'viem';
 import { useWallet } from './hooks/useWallet';
-import { useTokens } from './hooks/useTokens';
-import { useClaim } from './hooks/useClaim';
-import { TokenRow } from './components/TokenRow';
-import { SkeletonRow } from './components/SkeletonRow';
-import { EmptyState } from './components/EmptyState';
+import { useCosmosWallet } from './hooks/useCosmosWallet';
+import { useAllocation } from './hooks/useAllocation';
+import { TokenLogo } from './components/TokenLogo';
 import { TxBanner } from './components/TxBanner';
 import { Spinner } from './components/Spinner';
-import { WalletIcon, ChevronDown, RefreshIcon } from './components/Icons';
+import { CheckIcon, WalletIcon, ChevronDown } from './components/Icons';
+import { formatUsdc } from './lib/claim';
+import { EVM_CHAIN } from './wagmi';
 
-const KeplrModal = lazy(() =>
-  import('./components/KeplrModal').then(m => ({ default: m.KeplrModal }))
+const ClaimModal = lazy(() =>
+  import('./components/ClaimModal').then(m => ({ default: m.ClaimModal }))
 );
 
+function Section({ step, title, children }) {
+  return (
+    <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)', animation: 'fadeUp 0.4s ease both' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+        <span style={{
+          width: 20,
+          height: 20,
+          borderRadius: '50%',
+          background: 'var(--bg-3)',
+          border: '1px solid var(--border-hi)',
+          fontSize: 11,
+          fontWeight: 700,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: 'var(--text-muted)',
+        }}>{step}</span>
+        <span style={{ fontSize: 13, fontWeight: 600 }}>{title}</span>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function Notice({ children, tone = 'orange' }) {
+  return (
+    <div style={{
+      margin: '16px 24px 0',
+      background: `var(--${tone}-dim)`,
+      border: `1px solid var(--${tone})`,
+      borderRadius: 10,
+      padding: '10px 14px',
+      fontSize: 12.5,
+      color: `var(--${tone})`,
+      lineHeight: 1.55,
+    }}>
+      {children}
+    </div>
+  );
+}
+
 function App() {
-  const { tokens, loading, error, fetchBalances, resetTokens } = useTokens();
-  const claim = useClaim(tokens);
+  const evm = useWallet();
+  const cosmos = useCosmosWallet();
+  const allocation = useAllocation(cosmos.key?.address);
+  const [recipientInput, setRecipientInput] = useState('');
+  const [modalOpen, setModalOpen] = useState(false);
+  const [banner, setBanner] = useState({ message: '', type: '', txHash: '' });
 
-  const handleDisconnected = () => {
-    resetTokens();
-    claim.resetClaim();
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const { walletState, address } = evm;
+
+  const handleConnect = () => cosmos.connect();
+  const disconnectWallet = () => {
+    cosmos.disconnect();
+    setDropdownOpen(false);
   };
 
-  const handleAccountConnected = async (addr) => {
-    claim.resetClaim();
-    const result = await fetchBalances(addr);
-    if (result) claim.initClaimStates(result.initialClaimStates);
-  };
+  const recipientRaw = recipientInput.trim() || address;
+  const recipientValid = isAddress(recipientRaw) && recipientRaw.toLowerCase() !== zeroAddress;
+  const recipient = recipientValid ? getAddress(recipientRaw) : '';
 
-  const { walletState, address, dropdownOpen, setDropdownOpen,
-    connectWallet, disconnectWallet, signMessage } = useWallet({
-    onDisconnected: handleDisconnected,
-    onAccountConnected: handleAccountConnected,
-  });
+  const { entry, claimed } = allocation;
+  const blocked = allocation.error || allocation.rootMismatch || allocation.closed || allocation.paused;
+  const canClaim = !!entry && !claimed && !allocation.claimedLoading && !blocked;
 
-  const handleConnect = () => connectWallet(handleAccountConnected);
-
-  const handleRefresh = async () => {
-    claim.resetClaim();
-    const result = await fetchBalances(address);
-    if (result) claim.initClaimStates(result.initialClaimStates);
+  const handleClaimed = (txHash) => {
+    allocation.refetchClaimed();
+    setBanner({ message: 'Claim confirmed!', type: 'success', txHash });
   };
 
   const truncate = (addr) => addr ? `${addr.slice(0, 6)}…${addr.slice(-4)}` : '';
+  const truncateCosmos = (addr) => addr ? `${addr.slice(0, 10)}…${addr.slice(-6)}` : '';
+  const deadlineLabel = allocation.deadline !== undefined
+    ? new Date(Number(allocation.deadline) * 1000).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
+    : '';
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
@@ -52,7 +99,7 @@ function App() {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        padding: '0 48px',
+        padding: '0 clamp(16px, 4vw, 48px)',
         height: 68,
         borderBottom: '1px solid var(--border)',
         background: 'oklch(0.11 0.008 260 / 0.92)',
@@ -76,8 +123,8 @@ function App() {
               <path d="M5.5 10h5" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
             </svg>
           </div>
-          <span style={{ fontWeight: 700, fontSize: 16, letterSpacing: '-0.3px' }}>Evmos Recover</span>
-          <span style={{
+          <span className="hide-sm" style={{ fontWeight: 700, fontSize: 16, letterSpacing: '-0.3px' }}>Evmos Recover</span>
+          <span className="hide-sm" style={{
             fontSize: 10,
             fontWeight: 600,
             letterSpacing: '0.08em',
@@ -91,31 +138,7 @@ function App() {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          {walletState === 'connected' && (
-            <button
-              onClick={handleRefresh}
-              title="Refresh balances"
-              style={{
-                width: 36,
-                height: 36,
-                borderRadius: 8,
-                background: 'var(--bg-3)',
-                border: '1px solid var(--border)',
-                color: 'var(--text-muted)',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                transition: 'all 0.15s',
-              }}
-              onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--border-hi)'; e.currentTarget.style.color = 'var(--text)'; }}
-              onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-muted)'; }}
-            >
-              <RefreshIcon size={14} />
-            </button>
-          )}
-
-          {walletState === 'disconnected' && (
+          {cosmos.status === 'disconnected' && (
             <button
               onClick={handleConnect}
               style={{
@@ -139,11 +162,11 @@ function App() {
               onMouseLeave={e => { e.currentTarget.style.background = 'var(--orange-dim)'; e.currentTarget.style.animation = 'pulseGlow 2.5s ease infinite'; }}
             >
               <WalletIcon size={15} />
-              Connect Wallet
+              Connect Keplr Wallet
             </button>
           )}
 
-          {walletState === 'connecting' && (
+          {cosmos.status === 'connecting' && (
             <button disabled style={{
               display: 'flex',
               alignItems: 'center',
@@ -164,7 +187,7 @@ function App() {
             </button>
           )}
 
-          {walletState === 'connected' && (
+          {cosmos.status === 'connected' && (
             <div style={{ position: 'relative' }}>
               <button
                 onClick={() => setDropdownOpen(o => !o)}
@@ -184,6 +207,7 @@ function App() {
                   color: 'var(--text)',
                   cursor: 'pointer',
                   letterSpacing: '-0.2px',
+                  whiteSpace: 'nowrap',
                 }}
               >
                 <div style={{
@@ -193,7 +217,7 @@ function App() {
                   background: 'var(--green)',
                   boxShadow: '0 0 8px var(--green)',
                 }} />
-                {truncate(address)}
+                {truncateCosmos(cosmos.key.bech32Address)}
                 <span style={{
                   display: 'flex',
                   transform: dropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)',
@@ -214,6 +238,7 @@ function App() {
                   overflow: 'hidden',
                   boxShadow: '0 12px 40px oklch(0 0 0 / 0.4)',
                   minWidth: 160,
+                  maxWidth: 'calc(100vw - 32px)',
                   zIndex: 50,
                   animation: 'fadeUp 0.15s ease',
                 }}>
@@ -224,8 +249,9 @@ function App() {
                     fontFamily: 'Space Mono, monospace',
                     borderBottom: '1px solid var(--border)',
                     letterSpacing: '-0.2px',
+                    wordBreak: 'break-all',
                   }}>
-                    {truncate(address)}
+                    {cosmos.key.bech32Address}
                   </div>
                   <button
                     onClick={disconnectWallet}
@@ -259,7 +285,7 @@ function App() {
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
-        padding: '64px 24px 120px',
+        padding: '64px 16px 120px',
       }}>
         <div style={{ textAlign: 'center', marginBottom: 48, animation: 'fadeUp 0.5s ease both' }}>
           <h1 style={{
@@ -274,8 +300,8 @@ function App() {
           }}>
             Recover your assets
           </h1>
-          <p style={{ fontSize: 15, color: 'var(--text-muted)', maxWidth: 400, lineHeight: 1.65, margin: '0 auto' }}>
-            Claim your token balances stuck on EVMOS network directly to your wallet.
+          <p style={{ fontSize: 15, color: 'var(--text-muted)', maxWidth: 420, lineHeight: 1.65, margin: '0 auto' }}>
+            Sign with your Keplr wallet to claim your snapshot USDC to an Ethereum address.
           </p>
         </div>
 
@@ -293,35 +319,24 @@ function App() {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
+            gap: 12,
             padding: '18px 24px',
             borderBottom: '1px solid var(--border)',
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>Claimable Balances</span>
-              {walletState === 'connected' && !loading && tokens.length > 0 && (
-                <span style={{
-                  fontSize: 11,
-                  fontWeight: 700,
-                  padding: '2px 8px',
-                  borderRadius: 20,
-                  background: claim.unclaimedCount > 0 ? 'var(--orange-dim)' : 'var(--green-dim)',
-                  color: claim.unclaimedCount > 0 ? 'var(--orange)' : 'var(--green)',
-                  border: `1px solid ${claim.unclaimedCount > 0 ? 'oklch(0.68 0.19 46 / 0.25)' : 'oklch(0.68 0.16 145 / 0.25)'}`,
-                }}>
-                  {claim.unclaimedCount > 0 ? `${claim.unclaimedCount} available` : 'All claimed'}
-                </span>
-              )}
-            </div>
-            {walletState === 'connected' && !loading && tokens.length > 0 && claim.unclaimedCount > 0 && (
-              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                ≈ <span style={{ color: 'var(--text)', fontWeight: 600 }}>
-                  ${claim.totalUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </span> total
-              </div>
+            <span style={{ fontSize: 13, fontWeight: 600 }}>USDC Claim</span>
+            {deadlineLabel && (
+              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                {allocation.closed ? 'Closed' : 'Closes'} {deadlineLabel}
+              </span>
             )}
           </div>
 
-          {walletState !== 'connected' && !loading && (
+          {allocation.error && <Notice tone="red">{allocation.error}</Notice>}
+          {allocation.rootMismatch && <Notice tone="red">The snapshot does not match the claim contract. Do not claim; contact the operators.</Notice>}
+          {allocation.closed && <Notice>Claims closed. The claim deadline has passed.</Notice>}
+          {allocation.paused && <Notice>Claims are temporarily paused.</Notice>}
+
+          {cosmos.status !== 'connected' && (
             <div style={{
               display: 'flex',
               flexDirection: 'column',
@@ -343,12 +358,13 @@ function App() {
               }}>
                 <WalletIcon size={22} />
               </div>
-              <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 8 }}>Connect your wallet</div>
-              <div style={{ fontSize: 13, color: 'var(--text-muted)', textAlign: 'center', maxWidth: 280, lineHeight: 1.65 }}>
-                Connect your wallet to see any claimable balances associated with your address.
+              <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 8 }}>Connect your Keplr wallet</div>
+              <div style={{ fontSize: 13, color: 'var(--text-muted)', textAlign: 'center', maxWidth: 300, lineHeight: 1.65 }}>
+                Connect the Cosmos account from the snapshot to see your claimable USDC.
               </div>
               <button
                 onClick={handleConnect}
+                disabled={cosmos.status === 'connecting'}
                 style={{
                   marginTop: 24,
                   display: 'flex',
@@ -363,163 +379,158 @@ function App() {
                   fontFamily: 'Space Grotesk, sans-serif',
                   fontSize: 14,
                   fontWeight: 600,
-                  cursor: 'pointer',
+                  cursor: cosmos.status === 'connecting' ? 'not-allowed' : 'pointer',
                 }}
-                onMouseEnter={e => e.currentTarget.style.background = 'oklch(0.68 0.19 46 / 0.22)'}
-                onMouseLeave={e => e.currentTarget.style.background = 'var(--orange-dim)'}
               >
-                <WalletIcon size={15} />
-                Connect Wallet
+                {cosmos.status === 'connecting' ? <Spinner size={15} /> : <WalletIcon size={15} />}
+                {cosmos.status === 'connecting' ? 'Connecting…' : 'Connect Keplr Wallet'}
               </button>
+              {cosmos.error && (
+                <div style={{ marginTop: 14, fontSize: 12, color: 'var(--red)', textAlign: 'center', maxWidth: 320, lineHeight: 1.5 }}>
+                  {cosmos.error}
+                </div>
+              )}
             </div>
           )}
 
-          {loading && [0, 1, 2, 3].map(i => <SkeletonRow key={i} delay={i * 0.07} />)}
+          {cosmos.status === 'connected' && (
+            <Section step={1} title="Allocation">
+              {allocation.loading || allocation.claimedLoading ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                  <div className="skeleton" style={{ width: 36, height: 36, borderRadius: '50%' }} />
+                  <div className="skeleton" style={{ width: 120, height: 14 }} />
+                </div>
+              ) : !entry ? (
+                <div style={{ fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.6 }}>
+                  {allocation.error
+                    ? 'The snapshot could not be checked.'
+                    : 'This address is not in the snapshot. Try another account in your wallet.'}
+                </div>
+              ) : (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 16, opacity: claimed ? 0.6 : 1 }}>
+                  <TokenLogo symbol="USDC" />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 15, fontWeight: 600 }}>USDC</div>
+                    <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 3 }}>USD Coin on {EVM_CHAIN.name}</div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontSize: 15, fontWeight: 600, fontFamily: 'Space Mono, monospace', letterSpacing: '-0.3px' }}>
+                      {formatUsdc(entry.amount)}
+                    </div>
+                    {claimed && (
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4, fontSize: 12, color: 'var(--green)', marginTop: 3 }}>
+                        <CheckIcon size={11} color="var(--green)" /> Claimed
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </Section>
+          )}
 
-          {!loading && error && walletState === 'connected' && (
-            <div style={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              gap: 12,
-              padding: '48px 24px',
-              animation: 'fadeUp 0.4s ease both',
-            }}>
-              <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>{error}</span>
-              <button
-                onClick={handleRefresh}
+          {cosmos.status === 'connected' && entry && !claimed && (
+            <Section step={2} title="Ethereum recipient">
+              <input
+                value={recipientInput}
+                onChange={e => setRecipientInput(e.target.value)}
+                placeholder={address || '0x…'}
+                spellCheck={false}
                 style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 7,
-                  height: 36,
-                  padding: '0 18px',
+                  width: '100%',
+                  height: 42,
+                  padding: '0 12px',
                   borderRadius: 9,
-                  border: '1px solid var(--border-hi)',
                   background: 'var(--bg-3)',
+                  border: `1px solid ${recipientRaw && !recipientValid ? 'var(--red)' : 'var(--border-hi)'}`,
                   color: 'var(--text)',
-                  fontFamily: 'Space Grotesk, sans-serif',
-                  fontSize: 13,
-                  fontWeight: 600,
-                  cursor: 'pointer',
+                  fontFamily: 'Space Mono, monospace',
+                  fontSize: 12.5,
+                  outline: 'none',
                 }}
-              >
-                <RefreshIcon size={13} />
-                Retry
-              </button>
-            </div>
+              />
+              <div style={{ marginTop: 8, fontSize: 11.5, color: recipientRaw && !recipientValid ? 'var(--red)' : 'var(--text-dim)', lineHeight: 1.55 }}>
+                {recipientRaw && !recipientValid
+                  ? 'Enter a valid, non-zero Ethereum address.'
+                  : address
+                    ? 'Leave empty to receive the USDC in your connected Ethereum wallet.'
+                    : 'The address that receives the USDC. Your signature locks the claim to it.'}
+              </div>
+            </Section>
           )}
 
-          {!loading && walletState === 'connected' && tokens.length > 0 && tokens.map((token, i) => (
-            <TokenRow
-              key={token.id}
-              token={token}
-              index={i}
-              claimState={claim.claimStates[token.id]}
-              onClaim={() => claim.openClaimModal(token)}
-            />
-          ))}
-
-          {!loading && !error && walletState === 'connected' && tokens.length === 0 && (
-            <EmptyState allClaimed={false} />
-          )}
-
-          {!loading && walletState === 'connected' && tokens.length > 0 && claim.allClaimed && (
-            <div style={{ borderTop: '1px solid var(--border)' }}>
-              <EmptyState allClaimed={true} />
-            </div>
-          )}
-
-          {!loading && walletState === 'connected' && tokens.length > 0 && !claim.allClaimed && (
+          {cosmos.status === 'connected' && entry && !claimed && (
             <div style={{
               padding: '20px 24px',
-              borderTop: '1px solid var(--border)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
               gap: 12,
+              flexWrap: 'wrap',
               background: 'oklch(0.14 0.008 255 / 0.6)',
-              animation: 'fadeUp 0.5s ease 0.3s both',
             }}>
-              <div style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5 }}>
-                {claim.pendingCount > 0
-                  ? <span style={{ color: 'var(--orange)' }}>{claim.pendingCount} transaction{claim.pendingCount > 1 ? 's' : ''} pending…</span>
-                  : `${claim.unclaimedCount} asset${claim.unclaimedCount !== 1 ? 's' : ''} available to claim`}
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5, flex: '1 1 200px' }}>
+                {walletState === 'connected'
+                  ? <>
+                      Gas is paid by {truncate(address)} on {EVM_CHAIN.name}.{' '}
+                      <button
+                        onClick={evm.disconnectWallet}
+                        style={{ background: 'none', border: 'none', padding: 0, color: 'var(--text)', textDecoration: 'underline', fontSize: 'inherit', fontFamily: 'inherit', cursor: 'pointer' }}
+                      >
+                        Disconnect
+                      </button>
+                    </>
+                  : <>Connect an Ethereum wallet to pay the gas for the claim.</>}
               </div>
               <button
-                onClick={claim.openClaimAllModal}
-                disabled={claim.claimAllState === 'pending' || claim.pendingCount > 0}
+                onClick={walletState === 'connected' ? () => setModalOpen(true) : evm.connectWallet}
+                disabled={!canClaim || (walletState === 'connected' && !recipientValid)}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  gap: 9,
                   height: 44,
                   padding: '0 28px',
                   borderRadius: 9,
                   border: 'none',
-                  background: claim.claimAllState === 'pending' || claim.pendingCount > 0
-                    ? 'oklch(0.68 0.19 46 / 0.25)'
-                    : 'var(--orange)',
+                  background: canClaim && (walletState !== 'connected' || recipientValid) ? 'var(--orange)' : 'oklch(0.68 0.19 46 / 0.25)',
                   color: 'white',
                   fontFamily: 'Space Grotesk, sans-serif',
                   fontSize: 14,
                   fontWeight: 700,
-                  cursor: claim.claimAllState === 'pending' || claim.pendingCount > 0 ? 'not-allowed' : 'pointer',
+                  cursor: canClaim && (walletState !== 'connected' || recipientValid) ? 'pointer' : 'not-allowed',
                   letterSpacing: '0.01em',
-                  transition: 'all 0.18s',
-                  boxShadow: claim.claimAllState !== 'pending' && claim.pendingCount === 0
-                    ? '0 4px 20px oklch(0.68 0.19 46 / 0.35)'
-                    : 'none',
-                }}
-                onMouseEnter={e => {
-                  if (claim.claimAllState !== 'pending' && claim.pendingCount === 0) {
-                    e.currentTarget.style.background = 'oklch(0.73 0.19 46)';
-                    e.currentTarget.style.boxShadow = '0 6px 28px oklch(0.68 0.19 46 / 0.45)';
-                  }
-                }}
-                onMouseLeave={e => {
-                  e.currentTarget.style.background = claim.claimAllState === 'pending' || claim.pendingCount > 0
-                    ? 'oklch(0.68 0.19 46 / 0.25)'
-                    : 'var(--orange)';
-                  e.currentTarget.style.boxShadow = claim.claimAllState !== 'pending' && claim.pendingCount === 0
-                    ? '0 4px 20px oklch(0.68 0.19 46 / 0.35)'
-                    : 'none';
                 }}
               >
-                {(claim.claimAllState === 'pending' || claim.pendingCount > 0) ? <Spinner size={15} color="white" /> : null}
-                {(claim.claimAllState === 'pending' || claim.pendingCount > 0) ? 'Claiming…' : 'Claim All'}
+                {walletState === 'connected' ? 'Review claim' : 'Connect Ethereum wallet'}
               </button>
             </div>
           )}
         </div>
 
-        {walletState === 'connected' && !loading && (
-          <p style={{
-            marginTop: 24,
-            fontSize: 11.5,
-            color: 'var(--text-dim)',
-            textAlign: 'center',
-            maxWidth: 480,
-            lineHeight: 1.65,
-            animation: 'fadeUp 0.5s ease 0.4s both',
-          }}>
-            Always verify contract addresses before signing. RecoverFunds does not custody your assets.
-            Transactions are final and irreversible.
-          </p>
-        )}
+        <p style={{
+          marginTop: 24,
+          fontSize: 11.5,
+          color: 'var(--text-dim)',
+          textAlign: 'center',
+          maxWidth: 480,
+          lineHeight: 1.65,
+        }}>
+          Always check the recipient before signing. Evmos Recover never holds your funds,
+          and claims are final and irreversible.
+        </p>
       </main>
 
-      <TxBanner message={claim.banner.message} type={claim.banner.type} txHash={claim.banner.txHash} onDismiss={claim.dismissBanner} />
+      <TxBanner message={banner.message} type={banner.type} txHash={banner.txHash} onDismiss={() => setBanner({ message: '', type: '', txHash: '' })} />
 
-      {claim.modal && (
+      {modalOpen && (
         <Suspense fallback={null}>
-          <KeplrModal
-            claimTarget={claim.modal.target}
-            hexAddress={address}
-            signMessage={signMessage}
-            onClose={() => claim.setModal(null)}
-            onConfirmed={(target, txHash) => { claim.handleModalConfirmed(target, txHash); claim.setModal(null); }}
+          <ClaimModal
+            entry={entry}
+            recipient={recipient}
+            payer={address}
+            cosmos={cosmos}
+            onClose={() => setModalOpen(false)}
+            onClaimed={handleClaimed}
           />
         </Suspense>
       )}
